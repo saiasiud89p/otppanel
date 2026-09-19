@@ -3,7 +3,7 @@
 ══════════════════════════════════════════════════════
   OTP PANEL BOT — PRIVATE ADMIN EDITION           
   ULTRA-SPEED PROGRESSIVE SCANNER & NON-BLOCKING UI
-  (RAILWAY OPTIMIZED EDITION - BUG FREE)
+  (RAILWAY OPTIMIZED EDITION - BUG FREE FINAL)
 ══════════════════════════════════════════════════════
 """
 
@@ -42,27 +42,7 @@ logging.getLogger("asyncio").setLevel(logging.CRITICAL)
 logging.getLogger("aiohttp").setLevel(logging.CRITICAL)
 
 # ═══════════════════════════════════════════════════════
-#  AUTO-EXTRACTOR: READS ALL LOCAL JSON FILES FOR FIREBASE URLS
-# ═══════════════════════════════════════════════════════
-
-def extract_urls_from_local_files() -> list:
-    extracted_urls = set()
-    pattern = re.compile(r'https?://[a-zA-Z0-9-]+\.(?:firebaseio\.com|[a-zA-Z0-9-]+\.firebasedatabase\.app)')
-    current_dir = os.path.dirname(os.path.abspath(__file__)) if '__file__' in globals() else '.'
-    for filename in os.listdir(current_dir):
-        if filename.endswith('.json') and filename not in ['settings.json']:
-            filepath = os.path.join(current_dir, filename)
-            try:
-                with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
-                    content = f.read()
-                    matches = pattern.findall(content)
-                    extracted_urls.update(matches)
-            except Exception:
-                pass
-    return list(extracted_urls)
-
-# ═══════════════════════════════════════════════════════
-#  CONFIG & FULL FIREBASE URLS
+#  CONFIG & FULL FIREBASE URLS (ALL EXTRACTED INCLUDED)
 # ═══════════════════════════════════════════════════════
 
 HARDCODED_URLS = [
@@ -149,11 +129,113 @@ HARDCODED_URLS = [
     "https://myadmin-38635-default-rtdb.firebaseio.com", "https://myapp-8228a-default-rtdb.firebaseio.com",
     "https://mypanelbot-default-rtdb.firebaseio.com", "https://navin512-54d6f-default-rtdb.firebaseio.com",
     "https://newappi-7661a-default-rtdb.firebaseio.com", "https://newspreding-default-rtdb.firebaseio.com",
-    "https://nky0-a5870-default-rtdb.firebaseio.com", "https://nn02-7189f-default-rtdb.firebaseio.com"
+    "https://nky0-a5870-default-rtdb.firebaseio.com", "https://nn02-7189f-default-rtdb.firebaseio.com",
+    "https://paid-hack-2-default-rtdb.firebaseio.com", "https://paidhackrat-default-rtdb.firebaseio.com",
+    "https://pand-c8e35-default-rtdb.firebaseio.com", "https://panel-wala-v108-default-rtdb.firebaseio.com",
+    "https://panel-wala-v11-default-rtdb.firebaseio.com", "https://panel-wala-v16-default-rtdb.firebaseio.com",
+    "https://panel-wala-v17-default-rtdb.firebaseio.com", "https://panel-wala-v28-default-rtdb.firebaseio.com",
+    "https://panel-wala-v40-default-rtdb.firebaseio.com", "https://panel-wala-v64-default-rtdb.firebaseio.com",
+    "https://panel-wala-v70-default-rtdb.firebaseio.com", "https://panel123628-default-rtdb.firebaseio.com",
+    "https://parkashbhai-default-rtdb.firebaseio.com", "https://pawankumar92342038-8f702-default-rtdb.firebaseio.com",
+    "https://pawanpanel-63418-default-rtdb.firebaseio.com", "https://pehla-panel-green-default-rtdb.firebaseio.com",
+    "https://pinkyrani-default-rtdb.firebaseio.com", "https://pintu-8921f-default-rtdb.firebaseio.com",
+    "https://pk114-6e828-default-rtdb.firebaseio.com", "https://pk175-b429e-default-rtdb.firebaseio.com",
+    "https://please-2b091-default-rtdb.firebaseio.com", "https://pm-india-07bhb-default-rtdb.firebaseio.com",
+    "https://pm-india-07y-gu-default-rtdb.firebaseio.com", "https://pm-kisan-01hfg-default-rtdb.firebaseio.com",
+    "https://pm-kisan-03-9c8f7-default-rtdb.firebaseio.com", "https://pm-kisan-04-de0e4-default-rtdb.firebaseio.com",
+    "https://pm-kisan-05jg-default-rtdb.firebaseio.com", "https://pm-kisan-111-default-rtdb.firebaseio.com",
+    "https://pm-kisan-13bguh-default-rtdb.firebaseio.com", "https://pm-kisan-13gfh-default-rtdb.firebaseio.com",
+    "https://pm-kisan-17hh-default-rtdb.firebaseio.com", "https://pm-kisan-18hgu-default-rtdb.firebaseio.com",
+    "https://pm-kisan-20-vgg-default-rtdb.firebaseio.com", "https://pm-kisan-21gvh-default-rtdb.firebaseio.com",
+    "https://pm-kisan-24dty-59dd1-default-rtdb.firebaseio.com", "https://pm-kisan-25hxg-default-rtdb.firebaseio.com",
+    "https://pm-kisan-28hhj-default-rtdb.firebaseio.com", "https://pm-kisan-28jbj-default-rtdb.firebaseio.com",
+    "https://pm-kisan-28ugg-default-rtdb.firebaseio.com", "https://pm-kishan-23gug-default-rtdb.firebaseio.com",
+    "https://pm-kishan-24hguh-default-rtdb.firebaseio.com", "https://pm-kishan-24jfyg-default-rtdb.firebaseio.com",
+    "https://pm-kishan-28bub-default-rtdb.firebaseio.com", "https://pm-kishan-30-huhj-default-rtdb.firebaseio.com",
+    "https://pm-kishan-31-ea1ac-default-rtdb.firebaseio.com", "https://pm-kishan-a8-default-rtdb.firebaseio.com",
+    "https://pm-kishan-b3-default-rtdb.firebaseio.com", "https://pm-kishan-b4-default-rtdb.firebaseio.com",
+    "https://pm-modi-22dh-default-rtdb.firebaseio.com", "https://pm-modi-27jff-default-rtdb.firebaseio.com",
+    "https://pmfg-ccccc-default-rtdb.firebaseio.com", "https://pmkisan-9fdd5-default-rtdb.firebaseio.com",
+    "https://pmnr1newad-default-rtdb.firebaseio.com", "https://pmsjdj-default-rtdb.firebaseio.com",
+    "https://pohn-cd7ea-default-rtdb.firebaseio.com", "https://pojakr-d81e3-default-rtdb.firebaseio.com",
+    "https://pp30-fc7e5-default-rtdb.firebaseio.com", "https://privatesok-59944-default-rtdb.firebaseio.com",
+    "https://priyaknn-3e914-default-rtdb.firebaseio.com", "https://proffercelawte-default-rtdb.firebaseio.com",
+    "https://project-f2fd6-default-rtdb.firebaseio.com", "https://project0809-c3674-default-rtdb.firebaseio.com",
+    "https://project3-13fff-default-rtdb.firebaseio.com", "https://projectpksk05102025-default-rtdb.firebaseio.com",
+    "https://projectpm0809-default-rtdb.firebaseio.com", "https://projectpm2209-default-rtdb.firebaseio.com",
+    "https://projectrto2209-default-rtdb.firebaseio.com", "https://projectsb0810-default-rtdb.firebaseio.com",
+    "https://pung-345e5-default-rtdb.firebaseio.com", "https://pvn7-a873a-default-rtdb.firebaseio.com",
+    "https://r62710898-39a8e-default-rtdb.firebaseio.com", "https://radhe-d31aa-default-rtdb.firebaseio.com",
+    "https://raghu-c1d6f-default-rtdb.firebaseio.com", "https://rahg-4564c-default-rtdb.firebaseio.com",
+    "https://rahu80759-ac69b-default-rtdb.firebaseio.com", "https://rahul-54fe9-default-rtdb.firebaseio.com",
+    "https://rahul-6bf55-default-rtdb.firebaseio.com", "https://rahulcscperosnl-default-rtdb.firebaseio.com",
+    "https://raj-kumar-63492-default-rtdb.firebaseio.com", "https://raj254346kumar-84033-default-rtdb.firebaseio.com",
+    "https://raja252525raj-4ee9a-default-rtdb.firebaseio.com", "https://rajputchuttad-default-rtdb.firebaseio.com",
+    "https://rajputlodu-5bed0-default-rtdb.firebaseio.com", "https://rajshoott-adminna-kutt-default-rtdb.firebaseio.com",
+    "https://rajucs-bca5d-default-rtdb.firebaseio.com", "https://raki143aa-default-rtdb.firebaseio.com",
+    "https://rameshwar-7okt-default-rtdb.firebaseio.com", "https://randa-2609c-default-rtdb.firebaseio.com",
+    "https://randi-rona-81876-default-rtdb.firebaseio.com", "https://rando-acf5a-default-rtdb.firebaseio.com",
+    "https://ranjibses-default-rtdb.firebaseio.com", "https://rantaishita-f7614-default-rtdb.firebaseio.com",
+    "https://ravi-23776-default-rtdb.firebaseio.com", "https://raxtyc-default-rtdb.firebaseio.com",
+    "https://rbl-7-e796b-default-rtdb.firebaseio.com", "https://rc-39-15-default-rtdb.firebaseio.com",
+    "https://rdkkk-a6706-default-rtdb.firebaseio.com", "https://rexxx-4c7a7-default-rtdb.firebaseio.com",
+    "https://rider-a922c-default-rtdb.firebaseio.com", "https://risho-d4c66-default-rtdb.firebaseio.com",
+    "https://rmx3511uuj-default-rtdb.firebaseio.com", "https://rnd12-17508-default-rtdb.firebaseio.com",
+    "https://rontem-a082b-default-rtdb.firebaseio.com", "https://root-3rto-default-rtdb.firebaseio.com",
+    "https://rt51-6e1df-default-rtdb.firebaseio.com", "https://rto-10-default-rtdb.firebaseio.com",
+    "https://rto-47-b39f4-default-rtdb.firebaseio.com", "https://rto-chalan-14-gyf-default-rtdb.firebaseio.com",
+    "https://rto-chalan-b10ad-default-rtdb.firebaseio.com", "https://rto-e-chall-4-default-rtdb.firebaseio.com",
+    "https://rto23-a5d99-default-rtdb.firebaseio.com", "https://rto50-84d38-default-rtdb.firebaseio.com",
+    "https://rto68-1a61f-default-rtdb.firebaseio.com", "https://rto9-d2b33-default-rtdb.firebaseio.com",
+    "https://rto91-2b27f-default-rtdb.firebaseio.com", "https://rtoadmin-49319-default-rtdb.firebaseio.com",
+    "https://rtochallan-8579d-default-rtdb.firebaseio.com", "https://rtochallan8-default-rtdb.firebaseio.com",
+    "https://rtomatrix-c1e78-default-rtdb.firebaseio.com", "https://rtompari-default-rtdb.firebaseio.com",
+    "https://ruff-panel-default-rtdb.firebaseio.com", "https://runjun-master-panel-default-rtdb.firebaseio.com",
+    "https://ruparamee-14f4b-default-rtdb.firebaseio.com", "https://s85138920-87594-default-rtdb.firebaseio.com",
+    "https://salasali6990-1171d-default-rtdb.firebaseio.com", "https://samar84900-6f084-default-rtdb.firebaseio.com",
+    "https://samar95476-54eb9-default-rtdb.firebaseio.com", "https://sampanel-fc525-default-rtdb.firebaseio.com",
+    "https://sanj-683c4-default-rtdb.firebaseio.com", "https://sanjee-9918a-default-rtdb.firebaseio.com",
+    "https://santosh-jii-default-rtdb.firebaseio.com", "https://sb35-d1851-default-rtdb.firebaseio.com",
+    "https://sbi-credit-card-27-default-rtdb.firebaseio.com", "https://sbi-yono-i31an-default-rtdb.firebaseio.com",
+    "https://sep12-aea6d-default-rtdb.firebaseio.com", "https://server-1-c3501-default-rtdb.firebaseio.com",
+    "https://server-2-a095f-default-rtdb.firebaseio.com", "https://server-2-fb768-default-rtdb.firebaseio.com",
+    "https://server-23-d1605-default-rtdb.firebaseio.com", "https://server-3-e44be-default-rtdb.firebaseio.com",
+    "https://server-6-42c3b-default-rtdb.firebaseio.com", "https://server-97e23-default-rtdb.firebaseio.com",
+    "https://server14-c6551-default-rtdb.firebaseio.com", "https://sexology-6fa9c-default-rtdb.firebaseio.com",
+    "https://sexy-chat-c66b8-default-rtdb.firebaseio.com", "https://shooot-admin-kitter-default-rtdb.firebaseio.com",
+    "https://shoot44-default-rtdb.firebaseio.com", "https://sikapro13uagtwo-default-rtdb.firebaseio.com",
+    "https://singhaana-6f199-default-rtdb.firebaseio.com", "https://sirelech1-default-rtdb.firebaseio.com",
+    "https://skkumar-2cb0e-default-rtdb.firebaseio.com", "https://smas-8bff8-default-rtdb.firebaseio.com",
+    "https://sms-receive-22100.firebaseio.com", "https://smsmms-3b08e-default-rtdb.firebaseio.com",
+    "https://spy-25-default-rtdb.firebaseio.com", "https://strom-90e84-default-rtdb.firebaseio.com",
+    "https://stsfk30aug-default-rtdb.firebaseio.com", "https://suraj-30e07-default-rtdb.firebaseio.com",
+    "https://suraj-b9a86-default-rtdb.firebaseio.com", "https://svi13-531bf-default-rtdb.firebaseio.com",
+    "https://testing-81627-default-rtdb.firebaseio.com", "https://testingyou-2dcac-default-rtdb.firebaseio.com",
+    "https://tillu-2-default-rtdb.firebaseio.com", "https://tryagainnew-58f1a-default-rtdb.firebaseio.com",
+    "https://trying-90b4b-default-rtdb.firebaseio.com", "https://trypan3l-default-rtdb.firebaseio.com",
+    "https://tt01-5e373-default-rtdb.firebaseio.com", "https://u13667713-dc566-default-rtdb.firebaseio.com",
+    "https://u16714964-283ef-default-rtdb.firebaseio.com", "https://u24143844-c1b11-default-rtdb.firebaseio.com",
+    "https://u24153206-5eef6-default-rtdb.firebaseio.com", "https://u2519579-a31aa-default-rtdb.firebaseio.com",
+    "https://u25428732-91bd9-default-rtdb.firebaseio.com", "https://u25783858-e6739-default-rtdb.firebaseio.com",
+    "https://u2865726-eeb1f-default-rtdb.firebaseio.com", "https://u40179853-987df-default-rtdb.firebaseio.com",
+    "https://u58325342-dffc0-default-rtdb.firebaseio.com", "https://u62751482-f5b46-default-rtdb.firebaseio.com",
+    "https://u62803313-e54bc-default-rtdb.firebaseio.com", "https://u66grdgh-default-rtdb.firebaseio.com",
+    "https://u67583339-bf0c1-default-rtdb.firebaseio.com", "https://u72328193-47b68-default-rtdb.firebaseio.com",
+    "https://u72749819-fa563-default-rtdb.firebaseio.com", "https://u75887828-b5a63-default-rtdb.firebaseio.com",
+    "https://u8208372-ad1d1-default-rtdb.firebaseio.com", "https://udkudjudj-default-rtdb.firebaseio.com",
+    "https://ufff-52c18-default-rtdb.firebaseio.com", "https://ujjwal-86c6e-default-rtdb.firebaseio.com",
+    "https://ullusah-default-rtdb.firebaseio.com", "https://ultra-14-default-rtdb.firebaseio.com",
+    "https://ultra29s25ultra-4ef28-default-rtdb.firebaseio.com", "https://ultra381144-d1af5-default-rtdb.firebaseio.com",
+    "https://vdgdgd-80f1e-default-rtdb.firebaseio.com", "https://vecna-82db2-default-rtdb.firebaseio.com",
+    "https://vgfffd-bef01-default-rtdb.firebaseio.com", "https://vibe-d238e-default-rtdb.firebaseio.com",
+    "https://videocalls-f3434-default-rtdb.firebaseio.com", "https://virugoniya-default-rtdb.firebaseio.com",
+    "https://vishnunew16-default-rtdb.firebaseio.com", "https://vsbsvs-default-rtdb.firebaseio.com",
+    "https://xc04-52348-default-rtdb.firebaseio.com", "https://yes2-ead3d-default-rtdb.firebaseio.com",
+    "https://yono-sb41-default-rtdb.firebaseio.com", "https://your-db.firebaseio.com",
+    "https://your-project.firebaseio.com", "https://yourfirebase-default-rtdb.firebaseio.com"
 ]
 
-LOCAL_URLS = extract_urls_from_local_files()
-RAW_URLS = list(set(HARDCODED_URLS + LOCAL_URLS))
+RAW_URLS = list(set(HARDCODED_URLS))
 DATABASES = {f"P_{i}": url for i, url in enumerate(RAW_URLS)}
 
 POLL_INTERVAL   = 3  
@@ -525,10 +607,14 @@ async def get_all_devices(bot_token: str, chat_id: int = 0, users_db: dict = Non
 
 # 🔥 SMART DEVICE SEARCH (Fixes "Device not found" error)
 async def find_device_by_id(dev_id: str, bot_token: str, chat_id: int, users_db: dict) -> Optional[Device]:
+    # Sanitize dev_id just in case
+    dev_id = str(dev_id).strip()
+    
     # Check all active cache first
     for tag, devs in GLOBAL_DEVICE_CACHE.items():
         for d in devs:
             if d.id == dev_id: return d
+            
     # If not found, fetch fresh list and check
     all_devs = await get_all_devices(bot_token, chat_id, users_db)
     for d in all_devs:
@@ -567,11 +653,12 @@ async def show_fresh30_page(message_obj, chat_id, page, bot_token, users_db):
         return
 
     total_devs = len(dev_ids)
-    total_pages = max(1, (total_devs + 4) // 5) 
+    PAGE_SIZE = 5 # Fix for undefined PAGE_SIZE in this context
+    total_pages = max(1, (total_devs + PAGE_SIZE - 1) // PAGE_SIZE) 
     page = max(0, min(page, total_pages - 1))
 
-    start = page * 5
-    page_ids = dev_ids[start:start+5]
+    start = page * PAGE_SIZE
+    page_ids = dev_ids[start:start+PAGE_SIZE]
 
     devices = await get_all_devices(bot_token, chat_id, users_db)
     dev_map = {d.id: d for d in devices}
@@ -1023,7 +1110,7 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
             dev_id = data[4:]
             device = await find_device_by_id(dev_id, bot_token, chat_id, users_db)
             if not device:
-                await query.answer("Device not found!", show_alert=True)
+                await query.answer("Device not found! List purani ho gayi hai, refresh karein.", show_alert=True)
                 return
             
             user_focus.setdefault(bot_token, {})[chat_id] = dev_id
@@ -1041,7 +1128,7 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
 
             device = await find_device_by_id(dev_id, bot_token, chat_id, users_db)
             if not device:
-                await query.answer("Device not found in active list!", show_alert=True)
+                await query.answer("Device not found in active list! Refresh karein.", show_alert=True)
                 return
             
             user_focus.setdefault(bot_token, {})[chat_id] = dev_id
