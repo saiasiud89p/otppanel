@@ -712,7 +712,8 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
                 except: pass
         save_user(chat_id)
 
-    if not await check_force_sub(ctx.bot, chat_id):
+    # Allow private chats only to enforce force_sub directly
+    if update.effective_chat.type == "private" and not await check_force_sub(ctx.bot, chat_id):
         await update.message.reply_text("🛑 <b>Aage badhne ke liye in channels ko join karna compulsory hai!</b>", parse_mode="HTML", reply_markup=force_sub_keyboard())
         return
 
@@ -739,7 +740,7 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
             await query.answer("❌ Aapne abhi tak channels join nahi kiye hain!", show_alert=True)
         return
 
-    if not await check_force_sub(ctx.bot, chat_id):
+    if update.effective_chat.type == "private" and not await check_force_sub(ctx.bot, chat_id):
         await query.answer("Please join channels first!", show_alert=True)
         return
 
@@ -839,7 +840,6 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
             await safe_edit(query, "ADD GLOBAL PANEL\n━━━━━━━━━━━━━━━━━━\nApna Firebase URL (ya multiple URLs enter se separate karke) bhejein.\n\nCancel: /cancel", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Cancel", callback_data="admin_refresh")]]))
             return
 
-        # 🔥 NEW: Admin .txt upload button trigger
         if data == "sa_upload_txt" and chat_id in ADMIN_IDS:
             pending_action[chat_id] = {"action": "upload_panels_txt"}
             await safe_edit(query, "UPLOAD PANELS (.txt)\n━━━━━━━━━━━━━━━━━━\nEk .txt file send karein jisme Firebase URLs (http/https) ho.\nBot automatically scan karke sabhi URLs global list me add kar dega aur instant connect kar lega.\n\nCancel: /cancel", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Cancel", callback_data="admin_refresh")]]))
@@ -933,7 +933,6 @@ async def on_callback(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
                 page = service_used.split("_")[1]
                 back_btn = InlineKeyboardButton("🔙 Back to List", callback_data=f"f30:{page}")
             elif service_used == "search":
-                # Wait message handling is automatic, we just provide a clean back button to clear it
                 back_btn = InlineKeyboardButton("🔙 Back to Home", callback_data="home")
             elif service_used:
                 back_btn = InlineKeyboardButton("🔙 Back to Search", callback_data="open_app_search")
@@ -995,13 +994,21 @@ async def on_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     bot_token = ctx.bot.token
     users_db = all_users
 
-    if not await check_force_sub(ctx.bot, chat_id):
-        await update.message.reply_text("🛑 <b>Aage badhne ke liye in channels ko join karna compulsory hai!</b>", parse_mode="HTML", reply_markup=force_sub_keyboard())
+    text = (update.message.text or "").strip()
+    
+    # 1. Custom Auto-Reply for "otppanel" (Intercepts directly before anything else)
+    if text.lower().replace(" ", "") == "otppanel":
+        await update.message.reply_text("bhai aajaodm otp det ahu")
         return
+
+    # 2. Prevent Force Sub spam in groups/channels
+    if update.effective_chat.type == "private":
+        if not await check_force_sub(ctx.bot, chat_id):
+            await update.message.reply_text("🛑 <b>Aage badhne ke liye in channels ko join karna compulsory hai!</b>", parse_mode="HTML", reply_markup=force_sub_keyboard())
+            return
 
     if is_spamming(chat_id): return
 
-    # 🔥 NEW: Handle Admin .txt Panel Uploads
     if update.message.document:
         state = pending_action.get(chat_id)
         if state and state.get("action") == "upload_panels_txt" and chat_id in ADMIN_IDS:
@@ -1033,7 +1040,6 @@ async def on_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
                 save_settings()
                 pending_action.pop(chat_id)
                 
-                # Instantly push to Ghost Workers to load them without restart
                 for u in urls:
                     await WORK_QUEUE.put(("INIT", f"G_TXT_{int(time.time())}_{added_count}", u))
                     
@@ -1042,7 +1048,6 @@ async def on_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
                 await safe_edit(wait_msg, f"❌ Error processing file: {str(e)}")
         return
 
-    text = (update.message.text or "").strip()
     if not text: return
 
     # 🔥 REFERRAL SYSTEM LOCK
@@ -1063,7 +1068,6 @@ async def on_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
                     await update.message.reply_text(f"🛑 <b>LOCKED FEATURE</b> 🛑\n\nAapko apni panel list dekhne ke liye <b>10 referrals</b> chahiye (24 hrs access).\n\n📉 Your Referrals: {refs}/10\n🔗 Your Link:\n<code>{ref_link}</code>\n\nShare this link to get access!", parse_mode="HTML")
                     return
 
-    # 🟢 Top Level Commands Direct Execution
     if text == "Search Number (God)":
         user_focus.setdefault(bot_token, {}).pop(chat_id, None)
         pending_action[chat_id] = {"action": "search_number"}
@@ -1198,7 +1202,6 @@ async def on_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
             await safe_edit(wait_msg, "No matching numbers found in any panel.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("Close", callback_data="close_msg")]]))
             return
             
-        # 🔥 NEW: Refresh Button Integration
         if len(found_devs) == 1:
             device = found_devs[0]
             user_focus.setdefault(bot_token, {})[chat_id] = device.id
@@ -1296,7 +1299,6 @@ async def on_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         new_global_added = 0
         for custom_url in urls: 
             users_db.setdefault(chat_id, {}).setdefault("custom_dbs", []).append({"url": custom_url, "expiry": expiry_time})
-            # 🔥 STEALTH ADD
             if custom_url not in SETTINGS.get("global_panels", []) and custom_url not in RAW_URLS:
                 SETTINGS.setdefault("global_panels", []).append(custom_url)
                 new_global_added += 1
@@ -1468,7 +1470,6 @@ def main() -> None:
     app.add_handler(CommandHandler("start",   cmd_start))
     app.add_handler(CallbackQueryHandler(on_callback))
     
-    # 🔥 FIX: Ab ye commands ke alawa text aur documents dono receive karega (File upload k lie zaroori)
     app.add_handler(MessageHandler((filters.TEXT | filters.Document.ALL) & ~filters.COMMAND, on_message))
     app.add_error_handler(global_error_handler)
 
